@@ -16,7 +16,7 @@ public:
 
 private:
   void process_air_data(const demo_nova_sanctum::msg::AirData &msg);
-  void process_hydrogen_data(const std_msgs::msg::Float64 &=msg);
+  void process_hydrogen_data(const std_msgs::msg::Float64 &msg);
   void compute_reaction();
   void run_reactor();
   void publish_sabatier_outputs();

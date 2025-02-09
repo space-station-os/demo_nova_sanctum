@@ -109,9 +109,9 @@ The **ORS** consists of the following primary processes:
 ## **Example Execution**
 1. **Start ROS 2 system:**
    ```sh
-   ros2 launch oxygen_recovery_system system.launch.py
+   ros2 launch demo_nova_sanctum ogs_systems_v1.launch.py
    ```
-2. **Set Parameters Dynamically:**
+2. **Set Parameters Dynamically: TODO**
    ```sh
    ros2 param set /electrolysis_node efficiency_factor 0.98
    ros2 param set /electrolysis_node cooling_rate 7.0
