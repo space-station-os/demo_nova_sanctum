@@ -5,7 +5,7 @@
 Sabatier::Sabatier()
     : Node("sabatier"),
       co2_mass_(0.0),
-      h2_mass_(0.0),
+      h2_mass_(300.0),
       moisture_content_(0.0),
       contaminants_(0.0),
       dew_point_(0.0),
@@ -35,6 +35,10 @@ Sabatier::Sabatier()
   sabatier_publisher_ = this->create_publisher<demo_nova_sanctum::msg::Sabatier>(
       "/sabatier", 10);
 
+  hydrogen_subscriber_= this->create_subscription<std_msgs::msg::Float64>(
+      "/hydrogen", 10,
+      std::bind(&Sabatier::process_hydrogen_data, this, std::placeholders::_1));
+
   timer_ = this->create_wall_timer(
       std::chrono::seconds(1), std::bind(&Sabatier::run_reactor, this));
 }
@@ -49,7 +53,11 @@ void Sabatier::process_air_data(const demo_nova_sanctum::msg::AirData &msg) {
   RCLCPP_INFO(this->get_logger(), "Received air data: CO2: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%, Dew Point: %.2f C",
               co2_mass_, moisture_content_, contaminants_, dew_point_);
 }
+void Sabatier::process_hydrogen_data(const std_msgs::msg::Float64 &msg) {
+  h2_mass_ = msg.data;
 
+  RCLCPP_INFO(this->get_logger(), "Received hydrogen data: H2: %.2f g", h2_mass_);
+}
 void Sabatier::run_reactor() {
   if (!safety_check()) {
     RCLCPP_WARN(this->get_logger(), "Safety check failed. Reactor not running.");

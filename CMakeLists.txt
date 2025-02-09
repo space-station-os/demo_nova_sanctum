@@ -24,6 +24,7 @@ set(msg_files
 
   "src/ars_systems/msg/AirData.msg"
   "src/ors_systems/msg/Sabatier.msg"
+  "src/ors_systems/msg/Water.msg"
 
 
 )
@@ -61,6 +62,24 @@ ament_target_dependencies(sabatier std_srvs rosidl_default_generators rclcpp sen
 rosidl_target_interfaces(sabatier ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
+add_executable(water_pub src/ors_systems/src/water_pub.cpp)
+ament_target_dependencies(water_pub std_srvs rosidl_default_generators rclcpp sensor_msgs)
+
+rosidl_target_interfaces(water_pub ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+add_executable(deionization_bed src/ors_systems/src/deionization_chamber.cpp)
+ament_target_dependencies(deionization_bed std_srvs rosidl_default_generators rclcpp sensor_msgs)
+
+rosidl_target_interfaces(deionization_bed ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+
+add_executable(electrolysis src/ors_systems/src/electrolysis.cpp)
+ament_target_dependencies(electrolysis std_srvs rosidl_default_generators rclcpp sensor_msgs)
+
+rosidl_target_interfaces(electrolysis ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+
+
 add_executable(waste_collector src/wrs_systems/src/waste_collection.cpp)
 ament_target_dependencies(waste_collector rosidl_default_generators rclcpp sensor_msgs)
 rosidl_target_interfaces(waste_collector ${PROJECT_NAME} "rosidl_typesupport_cpp")
@@ -79,9 +98,14 @@ install(TARGETS
   desiccant
   adsorbent
   sabatier
+  water_pub
+  deionization_bed
+  electrolysis
+  
   waste_collector
   filteration 
   process_water
+  
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch/
