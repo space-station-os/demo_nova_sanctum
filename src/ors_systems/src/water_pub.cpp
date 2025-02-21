@@ -42,9 +42,10 @@ void WaterService::water_accumulation() {
     if (water_level_ > max_tank_capacity_) {
         water_level_ = max_tank_capacity_;
     }
-
+    RCLCPP_INFO(this->get_logger(), "===========================");
     RCLCPP_INFO(this->get_logger(), "Tank filling: Water = %.2f L, Contaminants = %.2f ppm, Iodine = %.2f ppm",
                 water_level_, contaminants_level_, iodine_level_);
+    RCLCPP_INFO(this->get_logger(), "===========================");
 }
 
 void WaterService::handle_water_request(
@@ -82,10 +83,29 @@ void WaterService::send_deionization_request() {
     RCLCPP_INFO(this->get_logger(), "Sending water to deionization chamber: Water = %.2f L, Contaminants = %.2f ppm, Iodine = %.2f ppm",
                 request->water, request->contaminants, request->iodine_level);
 
-    // Send request asynchronously with callback
+    // Send request asynchronously
     auto future = deionization_client_->async_send_request(request,
-        std::bind(&WaterService::process_deionization_response, this, std::placeholders::_1));
+        [this](rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future) {
+            try {
+                auto response = future.get();
+                if (response->success) {
+                    RCLCPP_INFO(this->get_logger(), "Deionization successful. Emptying tank...");
+                    water_level_ = 0.0;
+                    contaminants_level_ = 0.0;
+                    iodine_level_ = 0.0;
+                    RCLCPP_INFO(this->get_logger(), "Tank emptied successfully.");
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Deionization in progress. Retrying in 5 seconds...");
+                    rclcpp::sleep_for(5s);
+                    send_deionization_request();  // Retry sending the request
+                }
+            } catch (const std::exception &e) {
+                RCLCPP_ERROR(this->get_logger(), "Exception while calling deionization service: %s", e.what());
+            }
+        }
+    );
 }
+
 
 void WaterService::process_deionization_response(rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future) {
     try {

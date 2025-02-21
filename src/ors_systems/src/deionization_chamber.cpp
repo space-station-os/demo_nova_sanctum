@@ -72,7 +72,7 @@ void IonizationBed::contamination_removal_pipeline() {
 
 void IonizationBed::deionization() {
     if (water_ >= 10.0) {
-        double iodine_removal_rate = 0.1;  // Slower removal for realistic simulation
+        double iodine_removal_rate = 0.5;  // Slower removal for realistic simulation
         iodine_level_ -= iodine_removal_rate;
         if (iodine_level_ < 0.01) iodine_level_ = 0.0;
 
@@ -94,6 +94,7 @@ void IonizationBed::gas_sensor() {
         open_three_way_valve();
     } else {
         RCLCPP_INFO(this->get_logger(), "No gas bubbles detected.");
+        RCLCPP_INFO(this->get_logger(), "===========================");
     }
 }
 
@@ -118,17 +119,24 @@ void IonizationBed::send_to_electrolysis() {
 
     RCLCPP_INFO(this->get_logger(), "Sending processed water to electrolysis: %.2f L", water_);
 
-    auto future = electrolysis_client_->async_send_request(request);
-    try {
-        auto response = future.get();
-        if (response->success) {
-            RCLCPP_INFO(this->get_logger(), "Water successfully transferred to electrolysis.");
-        } else {
-            RCLCPP_ERROR(this->get_logger(), "Failed to send water to electrolysis: %s", response->message.c_str());
+    auto future = electrolysis_client_->async_send_request(request,
+        [this](rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future) {
+            try {
+                auto response = future.get();
+                if (response->success) {
+                    RCLCPP_INFO(this->get_logger(), "Water successfully transferred to electrolysis.");
+                } else {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to send water to electrolysis: %s", response->message.c_str());
+                }
+            } catch (const std::exception &e) {
+                RCLCPP_ERROR(this->get_logger(), "Exception while calling electrolysis service: %s", e.what());
+            }
+
+            // Reset active status to allow new deionization requests
+            is_active = false;
+            RCLCPP_INFO(this->get_logger(), "Ionization bed is now available for new requests.");
         }
-    } catch (const std::exception &e) {
-        RCLCPP_ERROR(this->get_logger(), "Exception while calling electrolysis service: %s", e.what());
-    }
+    );
 
     // Reset water after sending to electrolysis
     water_ = 0.0;
@@ -136,6 +144,7 @@ void IonizationBed::send_to_electrolysis() {
     iodine_level_ = 0.0;
     gas_bubbles_ = 0.0;
 }
+
 
 // Main Function
 int main(int argc, char **argv) {

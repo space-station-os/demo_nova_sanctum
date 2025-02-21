@@ -35,8 +35,8 @@ Sabatier::Sabatier()
   sabatier_publisher_ = this->create_publisher<demo_nova_sanctum::msg::Sabatier>(
       "/sabatier", 10);
 
-  hydrogen_subscriber_= this->create_subscription<std_msgs::msg::Float64>(
-      "/hydrogen", 10,
+  hydrogen_subscriber_= this->create_subscription<demo_nova_sanctum::msg::Electrolysis>(
+      "/electrolysis_output", 10,
       std::bind(&Sabatier::process_hydrogen_data, this, std::placeholders::_1));
 
   timer_ = this->create_wall_timer(
@@ -53,11 +53,11 @@ void Sabatier::process_air_data(const demo_nova_sanctum::msg::AirData &msg) {
   RCLCPP_INFO(this->get_logger(), "Received air data: CO2: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%, Dew Point: %.2f C",
               co2_mass_, moisture_content_, contaminants_, dew_point_);
 }
-void Sabatier::process_hydrogen_data(const std_msgs::msg::Float64 &msg) {
-  h2_mass_ = msg.data;
-
-  RCLCPP_INFO(this->get_logger(), "Received hydrogen data: H2: %.2f g", h2_mass_);
+void Sabatier::process_hydrogen_data(const demo_nova_sanctum::msg::Electrolysis &msg) {
+  h2_mass_ = msg.h2 * 2.016; // Convert from moles to grams
+  RCLCPP_INFO(this->get_logger(), "Received Hydrogen data: %.2f g", h2_mass_);
 }
+
 void Sabatier::run_reactor() {
   if (!safety_check()) {
     RCLCPP_WARN(this->get_logger(), "Safety check failed. Reactor not running.");
@@ -72,6 +72,7 @@ void Sabatier::run_reactor() {
   reactor_temp_ += temp_control_signal;
   reactor_pressure_ += pressure_control_signal;
   ghsv_ += ghsv_control_signal;
+
 
   RCLCPP_INFO(this->get_logger(), "Reactor Temp: %.2f C, Pressure: %.2f psi, GHSV: %.2f hr^-1",
               reactor_temp_, reactor_pressure_, ghsv_);
@@ -144,15 +145,20 @@ double Sabatier::pid_pressure(double desired, double current) {
   return kp * error + ki * integral_pressure_error_ + kd * derivative;
 }
 
-// PD Controller for GHSV
 double Sabatier::pd_ghsv(double desired, double current) {
+  double catalyst_volume = 2.0;  // Example: 2 liters of catalyst bed
+  double gas_flow_rate = total_inlet_flow_ * 60.0;  // Convert slpm to L/hr
+
   double error = desired - current;
   double derivative = error - last_ghsv_error_;
   last_ghsv_error_ = error;
 
   double kp = 0.5, kd = 0.1;
-  return kp * error + kd * derivative;
+  double ghsv = (kp * error + kd * derivative) / catalyst_volume;
+
+  return ghsv;
 }
+
 int main(int argc, char *argv[]) {
   
   rclcpp::init(argc, argv);

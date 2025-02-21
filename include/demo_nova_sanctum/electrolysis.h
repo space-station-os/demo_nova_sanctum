@@ -1,37 +1,39 @@
-#ifndef ELECTROLYSIS_NODE_HPP
-#define ELECTROLYSIS_NODE_HPP
+#ifndef ELECTROLYSIS_HPP
+#define ELECTROLYSIS_HPP
 
 #include "rclcpp/rclcpp.hpp"
-#include "demo_nova_sanctum/msg/water.hpp"
-#include "std_msgs/msg/float64.hpp"
+#include "demo_nova_sanctum/srv/water.hpp"
+#include "demo_nova_sanctum/msg/electrolysis.hpp"
+#include "sensor_msgs/msg/temperature.hpp"
+#include "sensor_msgs/msg/fluid_pressure.hpp"
+#include "std_msgs/msg/header.hpp"
 
 class ElectrolysisNode : public rclcpp::Node {
 public:
     ElectrolysisNode();
 
 private:
-    void waterCallback(const demo_nova_sanctum::msg::Water::SharedPtr msg);
+    void handle_electrolysis_request(
+        const std::shared_ptr<demo_nova_sanctum::srv::Water::Request> request,
+        std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response);
+    
     void performElectrolysis();
-    void recirculationLoop();
 
-    // Water parameters
+    // ROS Components
+    rclcpp::Service<demo_nova_sanctum::srv::Water>::SharedPtr electrolysis_server_;
+    rclcpp::Publisher<demo_nova_sanctum::msg::Electrolysis>::SharedPtr gas_pub_;
+    rclcpp::TimerBase::SharedPtr electrolysis_timer_;
+
+    // Water Properties
     double water_level_;
     double pressure_;
     double temperature_;
     bool water_available_;
 
-    // ROS Parameters
+    // Electrolysis Efficiency Parameters
     double efficiency_factor_;
-    double cooling_rate_;
     double required_pressure_;
     double depletion_factor_;
-
-    // ROS 2 Interfaces
-    rclcpp::Subscription<demo_nova_sanctum::msg::Water>::SharedPtr water_sub_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr hydrogen_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr oxygen_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr temp_pub_;
-    rclcpp::TimerBase::SharedPtr electrolysis_timer_;
 };
 
-#endif // ELECTROLYSIS_NODE_HPP
+#endif // ELECTROLYSIS_HPP

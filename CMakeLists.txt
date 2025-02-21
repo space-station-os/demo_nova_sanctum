@@ -26,6 +26,7 @@ set(msg_files
   "src/ors_systems/msg/Sabatier.msg"
   "src/ors_systems/msg/Water.msg"
   "src/wrs_systems/srv/Water.srv"
+  "src/ors_systems/msg/Electrolysis.msg"
 
 
 )
