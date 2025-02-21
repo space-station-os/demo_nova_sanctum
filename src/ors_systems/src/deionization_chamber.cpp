@@ -94,6 +94,7 @@ void IonizationBed::gas_sensor() {
         open_three_way_valve();
     } else {
         RCLCPP_INFO(this->get_logger(), "No gas bubbles detected.");
+        RCLCPP_INFO(this->get_logger(), "===========================");
     }
 }
 

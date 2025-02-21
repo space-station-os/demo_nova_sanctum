@@ -42,9 +42,10 @@ void WaterService::water_accumulation() {
     if (water_level_ > max_tank_capacity_) {
         water_level_ = max_tank_capacity_;
     }
-
+    RCLCPP_INFO(this->get_logger(), "===========================");
     RCLCPP_INFO(this->get_logger(), "Tank filling: Water = %.2f L, Contaminants = %.2f ppm, Iodine = %.2f ppm",
                 water_level_, contaminants_level_, iodine_level_);
+    RCLCPP_INFO(this->get_logger(), "===========================");
 }
 
 void WaterService::handle_water_request(
