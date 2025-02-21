@@ -2,80 +2,112 @@
 
 using namespace std::chrono_literals;
 
-Water::Water()
-: Node("water_publisher"),
-  water_level(this->declare_parameter<double>("water_level", 100.0)),
-  contaminants_level(this->declare_parameter<double>("contaminants_level", 0.0)) {
+WaterService::WaterService()
+    : Node("water_service"),
+      water_level_(this->declare_parameter<double>("initial_water_level", 0.0)),
+      contaminants_level_(this->declare_parameter<double>("initial_contaminants_level", 0.0)),
+      iodine_level_(this->declare_parameter<double>("initial_iodine_level", 0.0)),
+      max_tank_capacity_(this->declare_parameter<double>("max_tank_capacity", 100.0)),
+      accumulation_rate_(this->declare_parameter<double>("accumulation_rate", 5.0)) {
 
-  water_pub = this->create_publisher<demo_nova_sanctum::msg::Water>("/potable_water", 10);
-  ogs_client = this->create_client<std_srvs::srv::Trigger>("/ionization_bed");
-  timer_ = this->create_wall_timer(1s, std::bind(&Water::water_publisher, this));
+    // Service to provide water when requested
+    water_service_ = this->create_service<demo_nova_sanctum::srv::Water>(
+        "/water_request",
+        std::bind(&WaterService::handle_water_request, this, std::placeholders::_1, std::placeholders::_2)
+    );
+
+    // Client to send water to deionization chamber
+    deionization_client_ = this->create_client<demo_nova_sanctum::srv::Water>("/deionization_chamber");
+
+    // Timer to simulate water accumulation over time
+    accumulation_timer_ = this->create_wall_timer(
+        2s, std::bind(&WaterService::water_accumulation, this)
+    );
+
+    RCLCPP_INFO(this->get_logger(), "Water service node initialized. Monitoring tank levels...");
 }
 
-void Water::water_publisher() {
-  // Update water and contaminants levels
-  double contaminants_increment = 0.1; // Simulate contaminants increase
-  contaminants_level += contaminants_increment*3;
-
-  // Create and publish the water message
-  auto message = demo_nova_sanctum::msg::Water();
-  message.header.stamp = this->get_clock()->now();
-  message.header.frame_id = "water_collector_tank";
-  message.water_level = water_level;
-  message.gas_bubbles = 0.0;  //TODO: Simulate gas bubbles
-  message.contaminants_level = contaminants_level;
-  message.iodine_level=20.0; //ppm
-  message.iodine_level=20.0; //ppm
-  message.pressure = 14.7; 
-  message.temperature = 25.0; 
-
-  RCLCPP_INFO(this->get_logger(), "Publishing water data: Level: %.2f L, Contaminants: %.2f %%", 
-              water_level, contaminants_level);
-
-  water_pub->publish(message);
-
-  // Check for high contaminants level and trigger the OGS system if needed
-  if (contaminants_level >= 15.0) {
-    RCLCPP_WARN(this->get_logger(), "High contaminants level detected! Triggering OGS system...");
-    ogs_sys_trigger(ogs_client);
-    open_valve();
-    contaminants_level = 0.0; // Reset contaminants level after processing
-  }
-}
-
-void Water::ogs_sys_trigger(const rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr &client) {
-  if (!client->wait_for_service(5s)) {
-    RCLCPP_ERROR(this->get_logger(), "OGS service is not available!");
-    return;
-  }
-
-  auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-  auto future = client->async_send_request(request);
-
-  try {
-    auto response = future.get();
-    if (response->success) {
-      RCLCPP_INFO(this->get_logger(), "OGS system triggered successfully.");
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "Failed to trigger OGS system: %s", response->message.c_str());
+void WaterService::water_accumulation() {
+    if (water_level_ >= max_tank_capacity_) {
+        RCLCPP_WARN(this->get_logger(), "Tank full (%.2f L)! Sending request to deionization chamber.", water_level_);
+        send_deionization_request();
+        return;
     }
-  } catch (const std::exception &e) {
-    RCLCPP_ERROR(this->get_logger(), "Exception while calling OGS service: %s", e.what());
-  }
+
+    // Increment water level, contaminants, and iodine concentration
+    water_level_ += accumulation_rate_;
+    contaminants_level_ += accumulation_rate_ * 0.2;  // 20% of accumulation rate
+    iodine_level_ += accumulation_rate_ * 0.05;       // 5% of accumulation rate
+
+    if (water_level_ > max_tank_capacity_) {
+        water_level_ = max_tank_capacity_;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Tank filling: Water = %.2f L, Contaminants = %.2f ppm, Iodine = %.2f ppm",
+                water_level_, contaminants_level_, iodine_level_);
 }
 
-void Water::open_valve() {
-  RCLCPP_INFO(this->get_logger(), "Opening the valve to release water...");
-  // Simulate valve opening
-  water_level -= 10.0; // Reduce water level after releasing
-  if (water_level < 0.0) {
-    water_level = 0.0;
-  }
+void WaterService::handle_water_request(
+    const std::shared_ptr<demo_nova_sanctum::srv::Water::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response) {
+
+    RCLCPP_INFO(this->get_logger(), "Received external water request for %.2f L", request->water);
+
+    if (water_level_ < request->water) {
+        response->success = false;
+        response->message = "Not enough water available!";
+        RCLCPP_ERROR(this->get_logger(), "Request failed: Insufficient water.");
+        return;
+    }
+
+    send_deionization_request();
+    response->success = true;
+    response->message = "Water successfully transferred to deionization chamber.";
 }
 
+void WaterService::send_deionization_request() {
+    if (!deionization_client_->wait_for_service(5s)) {
+        RCLCPP_ERROR(this->get_logger(), "Deionization chamber service is not available!");
+        return;
+    }
+
+    auto request = std::make_shared<demo_nova_sanctum::srv::Water::Request>();
+    request->water = water_level_;
+    request->contaminants = contaminants_level_;
+    request->iodine_level = iodine_level_;
+    request->gas_bubbles = 0.0;  
+    request->pressure = 14.7;
+    request->temperature = 25.0;
+
+    RCLCPP_INFO(this->get_logger(), "Sending water to deionization chamber: Water = %.2f L, Contaminants = %.2f ppm, Iodine = %.2f ppm",
+                request->water, request->contaminants, request->iodine_level);
+
+    // Send request asynchronously with callback
+    auto future = deionization_client_->async_send_request(request,
+        std::bind(&WaterService::process_deionization_response, this, std::placeholders::_1));
+}
+
+void WaterService::process_deionization_response(rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future) {
+    try {
+        auto response = future.get();
+        if (response->success) {
+            RCLCPP_INFO(this->get_logger(), "Deionization successful. Emptying tank...");
+            water_level_ = 0.0;
+            contaminants_level_ = 0.0;
+            iodine_level_ = 0.0;
+            RCLCPP_INFO(this->get_logger(), "Tank emptied successfully.");
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Deionization failed: %s", response->message.c_str());
+        }
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR(this->get_logger(), "Exception while calling deionization service: %s", e.what());
+    }
+}
+
+// Main Function
 int main(int argc, char **argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<Water>());
-  rclcpp::shutdown();
-  return 0;
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<WaterService>());
+    rclcpp::shutdown();
+    return 0;
 }

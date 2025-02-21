@@ -1,34 +1,33 @@
-#ifndef DEMO_NOVA_SANCTUM_POTABLE_WATER_PUBLISHER_HPP_
-#define DEMO_NOVA_SANCTUM_POTABLE_WATER_PUBLISHER_HPP_
+#ifndef WATER_SERVICE_HPP
+#define WATER_SERVICE_HPP
 
-#include "demo_nova_sanctum/msg/water.hpp"
-#include <chrono>
-#include <memory> 
 #include "rclcpp/rclcpp.hpp"
-#include "std_srvs/srv/trigger.hpp"
-#include <bits/stdc++.h>
+#include "demo_nova_sanctum/srv/water.hpp"
 
-using namespace std; 
+class WaterService : public rclcpp::Node {
+public:
+    WaterService();
 
-class Water : public rclcpp :: Node {
-    public : 
-            Water();
-    private : 
-            void water_publisher();
-            void ogs_sys_trigger(const rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr &client);
-            void open_valve();
+private:
+    void water_accumulation();
+    void handle_water_request(
+        const std::shared_ptr<demo_nova_sanctum::srv::Water::Request> request,
+        std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response);
+    
+    void send_deionization_request();
+    void process_deionization_response(rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future);
 
-            double water_level;
-            double gas_bubbles; 
-            double contaminants_level;
+    // ROS Components
+    rclcpp::Service<demo_nova_sanctum::srv::Water>::SharedPtr water_service_;
+    rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedPtr deionization_client_;
+    rclcpp::TimerBase::SharedPtr accumulation_timer_;
 
-            rclcpp::Publisher<demo_nova_sanctum::msg::Water>::SharedPtr water_pub;
-            rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr ogs_client;
-
-
-            rclcpp::TimerBase::SharedPtr timer_;
-
-
+    // Water Properties
+    double water_level_;
+    double contaminants_level_;
+    double iodine_level_;
+    double max_tank_capacity_;
+    double accumulation_rate_;
 };
 
-#endif
+#endif // WATER_SERVICE_HPP

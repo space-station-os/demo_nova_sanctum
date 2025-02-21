@@ -25,6 +25,7 @@ set(msg_files
   "src/ars_systems/msg/AirData.msg"
   "src/ors_systems/msg/Sabatier.msg"
   "src/ors_systems/msg/Water.msg"
+  "src/wrs_systems/srv/Water.srv"
 
 
 )
