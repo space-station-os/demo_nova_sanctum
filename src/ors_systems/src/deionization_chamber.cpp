@@ -81,7 +81,7 @@ void IonizationBed::deionization() {
 }
 
 void IonizationBed::contamination_removal() {
-    double contaminants_decrement = 0.5;  // Slow reduction rate
+    double contaminants_decrement = 1.5;  // Slow reduction rate
     contaminants_ -= contaminants_decrement;
     if (contaminants_ < 0.0) contaminants_ = 0.0;
 
