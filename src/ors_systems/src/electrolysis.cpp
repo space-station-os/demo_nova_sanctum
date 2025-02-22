@@ -39,7 +39,7 @@ void ElectrolysisNode::handle_electrolysis_request(
     response->success = true;
     response->message = "Electrolysis started successfully.";
 
-    // ✅ Start the timer for electrolysis processing
+   
     if (!electrolysis_timer_ || electrolysis_timer_->is_canceled()) {
         electrolysis_timer_ = this->create_wall_timer(
             std::chrono::seconds(1),

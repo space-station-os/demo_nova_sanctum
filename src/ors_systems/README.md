@@ -1,134 +1,133 @@
+# **Oxygen Recovery System (ORS)**
 
-### **Oxygen Recovery System Simulation**
+This project simulates the **Oxygen Recovery System (ORS)** used on the **International Space Station (ISS)**. The system operates in a closed-loop environment and consists of multiple processes, including **water accumulation, deionization, electrolysis, and the Sabatier reaction** to ensure sustainable oxygen production for astronauts.
 
-This project simulates the **Oxygen Recovery System (ORS)** used on the **International Space Station (ISS)**. The system utilizes multiple processes, including **water electrolysis, hydrogen separation, oxygen adsorption, and water recirculation**, to sustain a closed-loop environment for astronauts.
+---
+## **System Overview**
 
-## **Overview**
-The **ORS** consists of the following primary processes:
+The ORS consists of the following primary nodes:
 
-1. **Deionization Process**:
-   - Removes **contaminants, iodine, and gas bubbles** from the water before electrolysis.
-   - Ensures that **ionized water** is pure and ready for oxygen recovery.
+1. **Water Pump (`water_pub.cpp`)** - Simulates incoming water accumulation and sends water to deionization when the tank is full.
+2. **Deionization Bed (`deionization_chamber.cpp`)** - Removes contaminants, iodine, and gas bubbles before sending the water to the electrolysis chamber.
+3. **Electrolysis Chamber (`electrolysis.cpp`)** - Splits water into **hydrogen (H₂) and oxygen (O₂)**.
+4. **Sabatier Reactor (`sabatier.cpp`)** - Uses the **hydrogen from electrolysis and carbon dioxide (CO₂) from the crew** to produce **methane (CH₄) and water (H₂O)**.
 
-2. **Electrolysis Process**:
-   - Splits **H₂O into hydrogen (H₂) and oxygen (O₂)** using electrolysis.
-   - Releases **oxygen to the cabin** and **sends hydrogen for further processing**.
+---
+## **System Communication & Data Flow**
 
-3. **Sabatier Process**:
-   - Uses **hydrogen (H₂) from electrolysis** and **carbon dioxide (CO₂) from the crew**.
-   - Produces **methane (CH₄) and water (H₂O)**, closing the loop.
+Each node communicates via ROS2 **services** and **topics** to form a continuous loop for oxygen and water recycling.
 
-4. **Water Recirculation**:
-   - Cools **excess water** and **returns it to the electrolysis chamber**.
-   - Ensures a **sustainable closed-loop system**.
+### **1. Water Pump (`water_pub.cpp`)**
+- **Accumulates water over time** at a fixed rate.
+- **When the tank is full (100L),** sends a **service request** to the deionization bed (`/deionization_chamber`).
+- **Waits for a response** before emptying the tank and restarting accumulation.
+
+**ROS Interfaces:**
+| **Service Client** | **Service Server** |
+|--------------------|--------------------|
+| `/deionization_chamber` | `/water_request` |
 
 ---
 
-## **System Architecture & Communication**
+### **2. Deionization Bed (`deionization_chamber.cpp`)**
+- **Removes iodine, contaminants, and gas bubbles** from water.
+- **If gas bubbles are detected,** diverts water via a three-way valve.
+- **Once purified,** sends water to the electrolysis chamber via a **service request** (`/electrolysis`).
+- **Waits for a response** before accepting new water from the water pump.
 
-### **Nodes & Topics**
-| **Node** | **Function** | **Published Topics** | **Subscribed Topics** |
-|----------|-------------|---------------------|---------------------|
-| **Deionization Chamber** (`deionization_chamber.cpp`) | Purifies incoming water | `/ionized_water` | `/water_input` |
-| **Electrolysis Process** (`electrolysis.cpp`) | Splits H₂O into O₂ & H₂ | `/hydrogen`, `/oxygen_supply`, `/thermal_control` | `/ionized_water` |
-| **Sabatier Reactor** (`sabatier.cpp`) | Converts H₂ + CO₂ into CH₄ & H₂O | `/water_recovered`, `/methane` | `/hydrogen`, `/co2_input` |
-| **Water Publisher** (`water_pub.cpp`) | Simulates incoming water | `/water_input` | None |
-| **Thermal Control System** (Integrated into electrolysis) | Cools recirculated water | `/thermal_control` | None |
-
----
-
-## **Flow of Data**
-1. **Water enters the deionization chamber** (`/water_input → /ionized_water`).
-2. **Electrolysis converts water into hydrogen and oxygen** (`/ionized_water → /hydrogen, /oxygen_supply`).
-3. **Hydrogen is sent to the Sabatier reactor**, where it reacts with CO₂ (`/hydrogen → /water_recovered, /methane`).
-4. **Recirculation Loop** cools and returns water to electrolysis (`/thermal_control`).
+**ROS Interfaces:**
+| **Service Client** | **Service Server** |
+|--------------------|--------------------|
+| `/electrolysis` | `/deionization_chamber` |
 
 ---
 
-## **Detailed Process Breakdown**
-### **1. Deionization Process**
-- **Input:** Raw water (`/water_input`).
-- **Output:** Purified **ionized water** (`/ionized_water`).
-- **Tasks:**
-  - Removes **iodine**, **contaminants**, and **gas bubbles**.
-  - Ensures that **clean water enters electrolysis**.
+### **3. Electrolysis Chamber (`electrolysis.cpp`)**
+- **Receives purified water** and processes it via electrolysis.
+- **Splits H₂O into hydrogen and oxygen.**
+  - **Hydrogen is sent to the Sabatier reactor**.
+  - **Oxygen is released into the station's atmosphere**.
+- **Water levels decrease by 30% per cycle** (controlled by depletion factor).
+- **If water reaches 2L or less,** electrolysis stops and waits for new water.
+
+**ROS Interfaces:**
+| **Service Server** | **Published Topics** |
+|--------------------|--------------------|
+| `/electrolysis` | `/electrolysis_output` (H₂ and O₂ data) |
 
 ---
 
-### **2. Electrolysis Process**
-- **Input:** Purified water (`/ionized_water`).
-- **Output:**
-  - **Hydrogen** (`/hydrogen`) → Sent to **Sabatier Reactor**.
-  - **Oxygen** (`/oxygen_supply`) → Sent to **cabin** for crew.
-  - **Heat** (`/thermal_control`) → Sent to **cooling system**.
-- **Tasks:**
-  - Uses **electrolysis reaction** to split H₂O into H₂ and O₂.
-  - Water level **decreases with each cycle** (30% per iteration).
-  - Once water is **depleted, it waits for new input**.
+### **4. Sabatier Reactor (`sabatier.cpp`)**
+- **Receives hydrogen from electrolysis** (`/electrolysis_output`).
+- **Receives CO₂ from a simulated atmosphere** (`/processed_co2`).
+- **Runs the Sabatier reaction:**
+  - **CO₂ + 4H₂ → CH₄ + 2H₂O**
+  - Produces **methane (CH₄)** (vented to space) and **water (H₂O)** (sent back to electrolysis).
+- **Uses PID controllers to regulate temperature, pressure, and gas flow.**
+- **Publishes reactor outputs** (`/sabatier`).
+
+**ROS Interfaces:**
+| **Subscribed Topics** | **Published Topics** |
+|----------------------|----------------------|
+| `/electrolysis_output` (H₂ data) | `/sabatier` (CH₄ & H₂O data) |
+| `/processed_co2` (CO₂ data) |  |
 
 ---
 
-### **3. Sabatier Reactor Process**
-- **Input:**
-  - Hydrogen (`/hydrogen`) from electrolysis.
-  - Carbon dioxide (`/co2_input`) from the crew.
-- **Output:**
-  - **Methane (CH₄)** (`/methane`) → Vented into space.
-  - **Recovered Water (H₂O)** (`/water_recovered`) → Sent back to **electrolysis**.
-- **Reaction:**
-  \[
-  4H₂ + CO₂ → CH₄ + 2H₂O
-  \]
-- **Tasks:**
-  - Uses **hydrogen from electrolysis**.
-  - Reacts with **CO₂ to form methane and water**.
-  - **Returns water to recirculation**.
+## **ROS2 System Architecture**
+
+```plaintext
+[ Water Pump ]
+    ↓ (Request: /deionization_chamber)
+[ Deionization Bed ]
+    ↓ (Request: /electrolysis)
+[ Electrolysis Chamber ]
+    ↓ (Publishes: /electrolysis_output)
+[ Sabatier Reactor ]
+    → (CH₄ to space, H₂O to electrolysis)
+```
+
+---
+## **ROS2 Parameters**
+
+| **Parameter** | **Default Value** | **Node** | **Description** |
+|--------------|------------------|---------|----------------|
+| `efficiency_factor` | `0.95` | Electrolysis | Electrolysis efficiency |
+| `required_pressure` | `50.0` | Electrolysis | Required pressure for electrolysis |
+| `depletion_factor` | `0.3` | Electrolysis | Water depletion per cycle |
+| `accumulation_rate` | `5.0` | Water Pump | Water accumulation per cycle |
 
 ---
 
-### **4. Water Recirculation**
-- **Input:** Excess water from **Sabatier reactor & electrolysis**.
-- **Output:** **Cooled water returned to electrolysis**.
-- **Tasks:**
-  - **Cools down heated water** from electrolysis.
-  - **Maintains pressure balance** for electrolysis.
-  - Ensures **continuous oxygen recovery**.
+## **Execution Instructions**
+
+### **1. Start ROS2 system:**
+```sh
+ros2 launch demo_nova_sanctum or_system.launch.py
+```
+
+### **2. Dynamically Set Parameters:**
+```sh
+ros2 param set /electrolysis_node efficiency_factor 0.98
+ros2 param set /electrolysis_node required_pressure 55.0
+ros2 param set /water_service accumulation_rate 6.0
+```
+
+### **3. Monitor Logs:**
+```sh
+ros2 topic echo /electrolysis_output
+ros2 topic echo /sabatier
+```
 
 ---
-
-## **ROS 2 Parameters**
-| **Parameter** | **Default Value** | **Description** |
-|--------------|------------------|----------------|
-| `efficiency_factor` | `1.0` | Electrolysis efficiency (100%) |
-| `cooling_rate` | `5.0` | Cooling per second |
-| `required_pressure` | `2.0` | Minimum pressure for electrolysis |
-| `depletion_factor` | `0.3` | Water depletion per cycle (30%) |
-
----
-
-## **Example Execution**
-1. **Start ROS 2 system:**
-   ```sh
-   ros2 launch demo_nova_sanctum ogs_systems_v1.launch.py
-   ```
-2. **Set Parameters Dynamically: TODO**
-   ```sh
-   ros2 param set /electrolysis_node efficiency_factor 0.98
-   ros2 param set /electrolysis_node cooling_rate 7.0
-   ros2 param set /electrolysis_node required_pressure 3.0
-   ros2 param set /electrolysis_node depletion_factor 0.3
-   ```
-
----
-
 ## **System Behavior: Expected Outputs**
-- **Water depletes** over cycles → `100L → 70L → 49L → ... → 0L`
-- **Electrolysis stops when water = 0**, waits for **new water**.
-- **Hydrogen is converted in Sabatier reactor** to **recover water**.
-- **Recirculation ensures continuous water supply**.
+- **Water fills in cycles → 100L → 70L → 49L → ... → 0L**
+- **Electrolysis stops at 0L and waits for new water.**
+- **Hydrogen is converted in the Sabatier reactor to recover water.**
+- **Methane is vented to space.**
+- **Water recirculates back to electrolysis.**
 
 ---
-
 ## **Image Reference**
 This diagram illustrates the **Oxygen Recovery System** architecture.
 
