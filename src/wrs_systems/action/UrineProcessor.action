@@ -1,0 +1,13 @@
+# Goal
+float64 urine
+
+---
+# Result
+float64 urine
+float64 contaminants
+
+---
+# Feedback
+bool success  # For every recirculation
+string message
+float64 temperature # To simulate heating and cooling
