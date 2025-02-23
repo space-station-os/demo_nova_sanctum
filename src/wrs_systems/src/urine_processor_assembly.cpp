@@ -45,9 +45,9 @@ void UrineProcessorAssembly::handle_urine_request(
 void UrineProcessorAssembly::simulate_distillation(double urine_volume, double &distilled_urine, double &contaminants) {
     RCLCPP_INFO(this->get_logger(), "Starting Distillation Process...");
     
-    double batch_size = urine_volume / 2.0; // Process in 2 batches
+    double batch_size = urine_volume / 2.0; 
     for (int i = 0; i < 2; i++) {
-        double temp_contaminants = batch_size * 0.1;  // 10% of batch is contaminants
+        double temp_contaminants = batch_size * 0.1;  
         double temp_distilled = batch_size - temp_contaminants;
 
         RCLCPP_INFO(this->get_logger(), "Batch %d: Heated to 100°C - %0.2f L of clean water extracted.", i + 1, temp_distilled);
