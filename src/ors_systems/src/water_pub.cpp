@@ -11,7 +11,7 @@ WaterService::WaterService()
       pressure_(14.7),
       temperature_(25.0),
       max_tank_capacity_(this->declare_parameter<double>("max_tank_capacity", 20.0)),  // Reduced tank capacity
-      accumulation_rate_(this->declare_parameter<double>("accumulation_rate", 2.0)),
+      accumulation_rate_(this->declare_parameter<double>("accumulation_rate", 10.0)),
       threshold_level_(this->declare_parameter<double>("threshold_level", 15.0)) {
 
     // Subscribe to tank status updates

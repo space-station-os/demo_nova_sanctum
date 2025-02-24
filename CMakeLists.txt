@@ -115,7 +115,9 @@ add_executable(clean_water_tank src/wrs_systems/src/water_processor_assembly/pro
 ament_target_dependencies(clean_water_tank rosidl_default_generators rclcpp sensor_msgs)
 rosidl_target_interfaces(clean_water_tank ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-
+add_executable(ultrasound src/wrs_systems/src/ultrasound_sensor.cpp)
+ament_target_dependencies(ultrasound rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(ultrasound ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
 
@@ -135,7 +137,7 @@ install(TARGETS
   catalytic_chamber
   ionizaton
   clean_water_tank
-
+  ultrasound
   
   DESTINATION lib/${PROJECT_NAME})
 
