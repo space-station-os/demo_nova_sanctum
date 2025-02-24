@@ -1,5 +1,0 @@
-float32 processing_rate  # Rate at which water is processed (e.g., gallons per hour)
----
-bool success             # Whether the operation was successful
-string message           # Success or error message
-

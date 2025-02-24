@@ -1,0 +1,6 @@
+float64 water
+float64 iodine_level
+
+--- 
+bool success
+string message 

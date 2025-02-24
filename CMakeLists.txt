@@ -26,6 +26,10 @@ set(msg_files
   "src/wrs_systems/srv/Water.srv"
   "src/wrs_systems/srv/Upa.srv"
   "src/wrs_systems/srv/Distillation.srv"
+  "src/wrs_systems/srv/Filteration.srv"
+  "src/wrs_systems/srv/IonBed.srv"
+  "src/wrs_systems/srv/PotableWater.srv"
+  "src/wrs_systems/msg/Water.msg"
  
 
 
@@ -94,6 +98,24 @@ ament_target_dependencies(upa rosidl_default_generators rclcpp sensor_msgs)
 rosidl_target_interfaces(upa ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
+add_executable(filter src/wrs_systems/src/water_processor_assembly/filteration_unit.cpp)
+ament_target_dependencies(filter rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(filter ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+
+add_executable(catalytic_chamber src/wrs_systems/src/water_processor_assembly/catalytic_chamber.cpp)
+ament_target_dependencies(catalytic_chamber rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(catalytic_chamber ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+add_executable(ionizaton src/wrs_systems/src/water_processor_assembly/ionization_bed.cpp)
+ament_target_dependencies(ionizaton rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(ionizaton ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+add_executable(clean_water_tank src/wrs_systems/src/water_processor_assembly/product_water_tank.cpp)
+ament_target_dependencies(clean_water_tank rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(clean_water_tank ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+
 
 
 
@@ -109,6 +131,10 @@ install(TARGETS
   whc
   waste_collector
   upa
+  filter
+  catalytic_chamber
+  ionizaton
+  clean_water_tank
 
   
   DESTINATION lib/${PROJECT_NAME})

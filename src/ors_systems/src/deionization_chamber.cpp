@@ -1,4 +1,4 @@
-#include "demo_nova_sanctum/ionization_bed.h"
+#include "demo_nova_sanctum/deionization_bed.h"
 #include <chrono>
 
 using namespace std::chrono_literals;
