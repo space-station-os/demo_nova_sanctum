@@ -28,8 +28,8 @@ set(msg_files
   "src/wrs_systems/srv/Distillation.srv"
   "src/wrs_systems/srv/Filteration.srv"
   "src/wrs_systems/srv/IonBed.srv"
-  "src/wrs_systems/srv/PotableWater.srv"
-  "src/wrs_systems/msg/Water.msg"
+  "src/wrs_systems/srv/CleanWater.srv"
+  "src/wrs_systems/msg/WaterCrew.msg"
  
 
 

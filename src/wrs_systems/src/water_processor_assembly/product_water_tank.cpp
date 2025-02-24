@@ -1,4 +1,4 @@
-#include "demo_nova_sanctum/wpa_product_water_tank.hpp"
+#include "demo_nova_sanctum//water_processor_assembly/product_water_tank.h"
 
 ProductWaterTank::ProductWaterTank() : Node("wpa_product_water_tank_server"), current_water_volume_(0.0) {
     water_tank_service_ = this->create_service<demo_nova_sanctum::srv::Water>(
@@ -6,12 +6,12 @@ ProductWaterTank::ProductWaterTank() : Node("wpa_product_water_tank_server"), cu
         std::bind(&ProductWaterTank::handle_water_tank, this, std::placeholders::_1, std::placeholders::_2)
     );
 
-    dispense_water_service_ = this->create_service<demo_nova_sanctum::srv::PotableWater>(
+    dispense_water_service_ = this->create_service<demo_nova_sanctum::srv::CleanWater>(
         "/wpa/dispense_water",
         std::bind(&ProductWaterTank::handle_dispense_water, this, std::placeholders::_1, std::placeholders::_2)
     );
 
-    tank_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::Water>(
+    tank_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::WaterCrew>(
         "/wpa/tank_status", 10
     );
 
@@ -49,8 +49,8 @@ void ProductWaterTank::handle_water_tank(
 }
 
 void ProductWaterTank::handle_dispense_water(
-    const std::shared_ptr<demo_nova_sanctum::srv::PotableWater::Request> request,
-    std::shared_ptr<demo_nova_sanctum::srv::PotableWater::Response> response) 
+    const std::shared_ptr<demo_nova_sanctum::srv::CleanWater::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::CleanWater::Response> response) 
 {
     double requested_water = request->water;
     if (requested_water > current_water_volume_) {
@@ -69,7 +69,7 @@ void ProductWaterTank::handle_dispense_water(
 }
 
 void ProductWaterTank::publish_tank_status() {
-    demo_nova_sanctum::msg::WPATankStatus msg;
+    demo_nova_sanctum::msg::WaterCrew msg;
     msg.water = current_water_volume_;
     msg.gas_bubbles = current_gas_bubbles_;
     msg.contaminants = current_contaminants_;

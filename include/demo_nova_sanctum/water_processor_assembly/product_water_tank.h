@@ -2,9 +2,9 @@
 #define WPA_PRODUCT_WATER_TANK_HPP
 
 #include <rclcpp/rclcpp.hpp>
-#include "demo_nova_sanctum/srv/wpa_product_water_tank.hpp"
-#include "demo_nova_sanctum/srv/wpa_dispense_water.hpp"
-#include "demo_nova_sanctum/msg/wpa_tank_status.hpp"
+#include "demo_nova_sanctum/srv/clean_water.hpp"
+#include "demo_nova_sanctum/srv/water.hpp"
+#include "demo_nova_sanctum/msg/water_crew.hpp"
 
 class ProductWaterTank : public rclcpp::Node {
 public:
@@ -12,8 +12,8 @@ public:
 
 private:
     rclcpp::Service<demo_nova_sanctum::srv::Water>::SharedPtr water_tank_service_;
-    rclcpp::Service<demo_nova_sanctum::srv::PotableWater>::SharedPtr dispense_water_service_;
-    rclcpp::Publisher<demo_nova_sanctum::msg::Water>::SharedPtr tank_status_publisher_;
+    rclcpp::Service<demo_nova_sanctum::srv::CleanWater>::SharedPtr dispense_water_service_;
+    rclcpp::Publisher<demo_nova_sanctum::msg::WaterCrew>::SharedPtr tank_status_publisher_;
     rclcpp::TimerBase::SharedPtr publish_timer_;
 
     double current_water_volume_;
@@ -28,8 +28,8 @@ private:
         std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response);
 
     void handle_dispense_water(
-        const std::shared_ptr<demo_nova_sanctum::srv::PotableWater::Request> request,
-        std::shared_ptr<demo_nova_sanctum::srv::PotableWater::Response> response);
+        const std::shared_ptr<demo_nova_sanctum::srv::CleanWater::Request> request,
+        std::shared_ptr<demo_nova_sanctum::srv::CleanWater::Response> response);
 
     void publish_tank_status();
 };

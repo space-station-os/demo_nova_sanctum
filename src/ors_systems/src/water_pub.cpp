@@ -1,4 +1,4 @@
-#include "demo_nova_sanctum/water_service.hpp"
+#include "demo_nova_sanctum/water_status.h"
 
 using namespace std::chrono_literals;
 
@@ -15,7 +15,7 @@ WaterService::WaterService()
       threshold_level_(this->declare_parameter<double>("threshold_level", 15.0)) {
 
     // Subscribe to tank status updates
-    tank_status_subscriber_ = this->create_subscription<demo_nova_sanctum::msg::WPATankStatus>(
+    tank_status_subscriber_ = this->create_subscription<demo_nova_sanctum::msg::WaterCrew>(
         "/wpa/tank_status", 10, std::bind(&WaterService::tank_status_callback, this, std::placeholders::_1)
     );
 
@@ -36,7 +36,7 @@ WaterService::WaterService()
     RCLCPP_INFO(this->get_logger(), "Water service node initialized. Monitoring tank levels...");
 }
 
-void WaterService::tank_status_callback(const demo_nova_sanctum::msg::WPATankStatus::SharedPtr msg) {
+void WaterService::tank_status_callback(const demo_nova_sanctum::msg::WaterCrew::SharedPtr msg) {
     RCLCPP_INFO(this->get_logger(), "Received tank status update.");
 
     // Extract only 20% of the total water contents from the message
