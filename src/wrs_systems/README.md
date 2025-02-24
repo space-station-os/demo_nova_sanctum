@@ -1,7 +1,3 @@
-Here's the **updated documentation** with all the changes, reflecting the new system behavior and structure.
-
----
-
 ## **🚀 Water Recovery System (WRS)**
 ### **Overview**
 The **Water Recovery System (WRS)** is a key component of the **Environmental Control and Life Support System (ECLSS)** on the **International Space Station (ISS)**. Its purpose is to **recycle wastewater into potable water** for astronauts using **various filtration, oxidation, and purification stages**.
