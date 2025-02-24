@@ -1,6 +1,6 @@
 #include "demo_nova_sanctum/water_processor_assembly/ionization_bed.h"
 
-CatalyticReactorProcessor::CatalyticReactorProcessor() : Node("wpa_catalytic_reactor_server") {
+CatalyticReactorProcessor::CatalyticReactorProcessor() : Node("wpa_catalytic_reactor_server"), unprocessed_water_(0.0) {
     catalytic_reactor_service_ = this->create_service<demo_nova_sanctum::srv::IonBed>(
         "/wpa/catalytic_reactor",
         std::bind(&CatalyticReactorProcessor::handle_catalytic_reactor, this, std::placeholders::_1, std::placeholders::_2)
@@ -44,8 +44,8 @@ void CatalyticReactorProcessor::handle_catalytic_reactor(
 void CatalyticReactorProcessor::process_ion_exchange(double &filtered_water, double &contaminants, double &iodine_level, double &gas_bubbles) {
     // **Simulating ion exchange purification process**
     contaminants *= 0.2;  // Removes 80% of remaining contaminants
-    iodine_level = 0.5;   // Adds iodine (mg/L) for microbial control
-    gas_bubbles += 0.02;  // Slight increase in gas bubbles
+    iodine_level = filtered_water * 0.05;  // Adds iodine based on volume (0.05 mg/L per liter)
+    gas_bubbles *= 0.5;  // Reduce gas content by 50%
 
     RCLCPP_INFO(this->get_logger(), "Ion Exchange Bed: Removed 80%% Contaminants.");
     RCLCPP_INFO(this->get_logger(), "Final Contaminants: %.2f%% | Iodine Level: %.2f mg/L | Gas Bubbles: %.2f%%", 
@@ -53,8 +53,9 @@ void CatalyticReactorProcessor::process_ion_exchange(double &filtered_water, dou
 }
 
 void CatalyticReactorProcessor::send_to_product_water_tank(double water, double gas_bubbles, double contaminants, double iodine_level, double pressure, double temperature) {
-    if (!product_water_tank_client_->wait_for_service(std::chrono::seconds(2))) {
-        RCLCPP_ERROR(this->get_logger(), "Product Water Tank Service Unavailable!");
+    if (!product_water_tank_client_->wait_for_service(std::chrono::seconds(5))) {
+        RCLCPP_FATAL(this->get_logger(), "Product Water Tank Service Unavailable! Retaining processed water.");
+        unprocessed_water_ = water; // Store water for later processing
         return;
     }
 
@@ -66,11 +67,25 @@ void CatalyticReactorProcessor::send_to_product_water_tank(double water, double 
     request->pressure = pressure;
     request->temperature = temperature;
 
-    auto future_result = product_water_tank_client_->async_send_request(request);
-    future_result.wait();
+    RCLCPP_INFO(this->get_logger(), "Sending %.2f L purified water with %.2f%% contaminants, %.2f mg/L iodine, %.2f%% gas bubbles to Product Water Tank...",
+                water, contaminants, iodine_level, gas_bubbles);
 
-    auto response = future_result.get();
-    RCLCPP_INFO(this->get_logger(), "Product Water Tank Response: %s", response->message.c_str());
+    auto future_result = product_water_tank_client_->async_send_request(request,
+        std::bind(&CatalyticReactorProcessor::handle_product_water_tank_response, this, std::placeholders::_1));
+}
+
+void CatalyticReactorProcessor::handle_product_water_tank_response(rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future) {
+    try {
+        auto response = future.get();
+        if (response->success) {
+            RCLCPP_INFO(this->get_logger(), "Product Water Tank successfully received purified water: %s", response->message.c_str());
+            unprocessed_water_ = 0.0; // Clear stored water
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Product Water Tank rejected water: %s. Retaining processed water.", response->message.c_str());
+        }
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR(this->get_logger(), "Exception while calling Product Water Tank service: %s", e.what());
+    }
 }
 
 int main(int argc, char **argv) {

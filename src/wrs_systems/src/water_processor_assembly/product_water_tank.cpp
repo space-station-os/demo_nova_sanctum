@@ -1,4 +1,4 @@
-#include "demo_nova_sanctum//water_processor_assembly/product_water_tank.h"
+#include "demo_nova_sanctum/water_processor_assembly/product_water_tank.h"
 
 ProductWaterTank::ProductWaterTank() : Node("wpa_product_water_tank_server"), current_water_volume_(0.0) {
     water_tank_service_ = this->create_service<demo_nova_sanctum::srv::Water>(
@@ -28,11 +28,13 @@ void ProductWaterTank::handle_water_tank(
     std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response) 
 {
     double incoming_water = request->water;
-    if (current_water_volume_ + incoming_water > 100.0) {
+    double available_space = 100.0 - current_water_volume_;
+
+    if (incoming_water > available_space) {
         response->success = false;
-        response->message = "Tank full! Cannot add more water.";
-        RCLCPP_WARN(this->get_logger(), "Water tank is full! Cannot accept %.2fL more.", incoming_water);
-        return;
+        response->message = "Tank full! Can only accept " + std::to_string(available_space) + "L more.";
+        RCLCPP_WARN(this->get_logger(), "Water tank near full! Accepting %.2fL and rejecting %.2fL.", available_space, incoming_water - available_space);
+        incoming_water = available_space;  // Accept only available space
     }
 
     current_water_volume_ += incoming_water;
@@ -53,11 +55,19 @@ void ProductWaterTank::handle_dispense_water(
     std::shared_ptr<demo_nova_sanctum::srv::CleanWater::Response> response) 
 {
     double requested_water = request->water;
+
     if (requested_water > current_water_volume_) {
         response->success = false;
         response->message = "Not enough water available.";
         RCLCPP_WARN(this->get_logger(), "Water request exceeds available amount. Request: %.2fL, Available: %.2fL",
                     requested_water, current_water_volume_);
+        return;
+    }
+
+    if (current_iodine_level_ < 0.2) {
+        response->success = false;
+        response->message = "Water iodine level too low for safe consumption!";
+        RCLCPP_WARN(this->get_logger(), "Water cannot be dispensed! Iodine level (%.2f mg/L) is below safe threshold.", current_iodine_level_);
         return;
     }
 
@@ -71,7 +81,7 @@ void ProductWaterTank::handle_dispense_water(
 void ProductWaterTank::publish_tank_status() {
     demo_nova_sanctum::msg::WaterCrew msg;
     msg.water = current_water_volume_;
-    msg.gas_bubbles = current_gas_bubbles_;
+    msg.gas_bubbles = current_gas_bubbles_ * 0.9;  // Gas bubbles reduce over time
     msg.contaminants = current_contaminants_;
     msg.iodine_level = current_iodine_level_;
     msg.pressure = current_pressure_;

@@ -35,8 +35,7 @@ void UrineProcessorAssembly::handle_urine_request(
     response->message = "Distillation complete! Sending to Purge Pump.";
 
     // **Simulate the Purge Pump**
-    double temperature = 100.0;
-    simulate_purge_pump(distilled_urine, temperature);
+    simulate_purge_pump(distilled_urine);
 
     // **Send processed water and contaminants to Water Processor Assembly**
     send_to_wpa(distilled_urine, contaminants);
@@ -44,13 +43,13 @@ void UrineProcessorAssembly::handle_urine_request(
 
 void UrineProcessorAssembly::simulate_distillation(double urine_volume, double &distilled_urine, double &contaminants) {
     RCLCPP_INFO(this->get_logger(), "Starting Distillation Process...");
-    
+
     double batch_size = urine_volume / 2.0; // Process in 2 batches
     for (int i = 0; i < 2; i++) {
         double temp_contaminants = batch_size * 0.1;  // 10% of batch is contaminants
         double temp_distilled = batch_size - temp_contaminants;
 
-        RCLCPP_INFO(this->get_logger(), "Batch %d: Heated to 100°C - %0.2f L of clean water extracted.", i + 1, temp_distilled);
+        RCLCPP_INFO(this->get_logger(), "Batch %d: Heated to 100°C - %.2f L of clean water extracted.", i + 1, temp_distilled);
         rclcpp::sleep_for(std::chrono::seconds(2));
 
         contaminants += temp_contaminants;
@@ -60,11 +59,13 @@ void UrineProcessorAssembly::simulate_distillation(double urine_volume, double &
     RCLCPP_INFO(this->get_logger(), "Distillation Complete! Total clean water: %.2f L, Contaminants: %.2f L", distilled_urine, contaminants);
 }
 
-void UrineProcessorAssembly::simulate_purge_pump(double &distilled_urine, double &temperature) {
+void UrineProcessorAssembly::simulate_purge_pump(double &distilled_urine) {
     RCLCPP_INFO(this->get_logger(), "Purge Pump Activated: Cooling down water...");
 
+    double temperature = 100.0; // Initial high temperature from distillation
+
     for (int i = 0; i < 5; i++) {
-        temperature -= 10.0;
+        temperature -= 20.0;
         RCLCPP_INFO(this->get_logger(), "Cooling... Current Temperature: %.2f°C", temperature);
         rclcpp::sleep_for(std::chrono::seconds(1));
     }
@@ -82,11 +83,24 @@ void UrineProcessorAssembly::send_to_wpa(double processed_water, double contamin
     request->urine = processed_water;
     request->contaminants = contaminants;
 
-    auto future_result = wpa_client_->async_send_request(request);
-    future_result.wait();
+    RCLCPP_INFO(this->get_logger(), "Sending %.2f L clean water and %.2f L contaminants to WPA...", processed_water, contaminants);
 
-    auto response = future_result.get();
-    RCLCPP_INFO(this->get_logger(), "WPA Response: %s", response->message.c_str());
+    // **Send request asynchronously**
+    auto future_result = wpa_client_->async_send_request(request,
+        std::bind(&UrineProcessorAssembly::handle_wpa_response, this, std::placeholders::_1));
+}
+
+void UrineProcessorAssembly::handle_wpa_response(rclcpp::Client<demo_nova_sanctum::srv::Distillation>::SharedFuture future) {
+    try {
+        auto response = future.get();
+        if (response->success) {
+            RCLCPP_INFO(this->get_logger(), "WPA processed water successfully: %s", response->message.c_str());
+        } else {
+            RCLCPP_WARN(this->get_logger(), "WPA failed to process water: %s", response->message.c_str());
+        }
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR(this->get_logger(), "Exception while calling WPA service: %s", e.what());
+    }
 }
     
 int main(int argc, char **argv) {

@@ -1,7 +1,7 @@
 #include "demo_nova_sanctum/water_processor_assembly/catalytic_chamber.h"
 
-MultiFiltrationProcessor::MultiFiltrationProcessor() : Node("wpa_multi_filtration_server") {
-    multi_filtration_service_ = this->create_service<demo_nova_sanctum::srv::Filteration >(
+MultiFiltrationProcessor::MultiFiltrationProcessor() : Node("wpa_multi_filtration_server"), unprocessed_water_(0.0) {
+    multi_filtration_service_ = this->create_service<demo_nova_sanctum::srv::Filteration>(
         "/wpa/filtered_water",
         std::bind(&MultiFiltrationProcessor::handle_multi_filtration, this, std::placeholders::_1, std::placeholders::_2)
     );
@@ -12,8 +12,8 @@ MultiFiltrationProcessor::MultiFiltrationProcessor() : Node("wpa_multi_filtratio
 }
 
 void MultiFiltrationProcessor::handle_multi_filtration(
-    const std::shared_ptr<demo_nova_sanctum::srv::Filteration ::Request> request,
-    std::shared_ptr<demo_nova_sanctum::srv::Filteration ::Response> response) 
+    const std::shared_ptr<demo_nova_sanctum::srv::Filteration::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::Filteration::Response> response) 
 {
     double filtered_water = request->filtered_water;
     double contaminants = request->contaminants;
@@ -36,50 +36,51 @@ void MultiFiltrationProcessor::handle_multi_filtration(
     response->success = true;
     response->message = "Multi-Filtration complete! Sending to Catalytic Reactor.";
 
-    // **Step 2: Catalytic Reactor - Oxidize Organics & Kill Microbes**
-    simulate_catalytic_reactor(filtered_water, contaminants);
-
-    // **Send purified water to the next processing stage**
-    send_to_catalytic_reactor(filtered_water, contaminants);
+    // **Send purified water to the Catalytic Reactor**
+    send_to_catalytic_reactor(filtered_water, contaminants, organics);
 }
 
 void MultiFiltrationProcessor::remove_ammonia_and_organics(double &filtered_water, double &contaminants, double &organics, double &ammonia) {
     // **Simulating removal process**
-    organics *= 0.2;  // Removes 80% of organics
-    ammonia *= 0.3;   // Removes 70% of ammonia
+    organics *= 0.50;  // First stage removes 50% of organics
+    ammonia *= 0.60;   // First stage removes 40% of ammonia
+    contaminants *= 0.70;  // 30% of contaminants removed
 
-    RCLCPP_INFO(this->get_logger(), "Multifiltration Bed: Removed 80%% Organics, 70%% Ammonia.");
+    RCLCPP_INFO(this->get_logger(), "Multifiltration Bed: Removed 50%% Organics, 40%% Ammonia.");
     RCLCPP_INFO(this->get_logger(), "Remaining Organics: %.2f%% | Remaining Ammonia: %.2f%%", organics, ammonia);
 }
 
-void MultiFiltrationProcessor::simulate_catalytic_reactor(double &filtered_water, double &contaminants) {
-    RCLCPP_INFO(this->get_logger(), "Catalytic Reactor Activated: Oxidizing volatile organics & killing microbes...");
-
-    // **Simulated oxidation & sterilization process**
-    for (int i = 0; i < 3; i++) {
-        RCLCPP_INFO(this->get_logger(), "Heat cycle %d: Reactor at %d°C - Organic oxidation in progress.", i + 1, 150);
-        rclcpp::sleep_for(std::chrono::seconds(1));
-    }
-
-    contaminants *= 0.33;  // Removes 67% of remaining contaminants
-    RCLCPP_INFO(this->get_logger(), "Catalytic Reactor: Microbial sterilization complete. Remaining Contaminants: %.2f%%", contaminants);
-}
-
-void MultiFiltrationProcessor::send_to_catalytic_reactor(double filtered_water, double remaining_contaminants) {
-    if (!catalytic_reactor_client_->wait_for_service(std::chrono::seconds(2))) {
-        RCLCPP_ERROR(this->get_logger(), "Catalytic Reactor Service Unavailable!");
+void MultiFiltrationProcessor::send_to_catalytic_reactor(double filtered_water, double remaining_contaminants, double organics) {
+    if (!catalytic_reactor_client_->wait_for_service(std::chrono::seconds(5))) {
+        RCLCPP_FATAL(this->get_logger(), "Catalytic Reactor Service Unavailable! Retaining processed water.");
+        unprocessed_water_ = filtered_water; // Store water for later processing
         return;
     }
 
     auto request = std::make_shared<demo_nova_sanctum::srv::IonBed::Request>();
     request->filtered_water = filtered_water;
     request->contaminants = remaining_contaminants;
+    
 
-    auto future_result = catalytic_reactor_client_->async_send_request(request);
-    future_result.wait();
+    RCLCPP_INFO(this->get_logger(), "Sending %.2f L filtered water with %.2f%% contaminants...",
+                filtered_water, remaining_contaminants);
 
-    auto response = future_result.get();
-    RCLCPP_INFO(this->get_logger(), "Catalytic Reactor Response: %s", response->message.c_str());
+    auto future_result = catalytic_reactor_client_->async_send_request(request,
+        std::bind(&MultiFiltrationProcessor::handle_catalytic_reactor_response, this, std::placeholders::_1));
+}
+
+void MultiFiltrationProcessor::handle_catalytic_reactor_response(rclcpp::Client<demo_nova_sanctum::srv::IonBed>::SharedFuture future) {
+    try {
+        auto response = future.get();
+        if (response->success) {
+            RCLCPP_INFO(this->get_logger(), "Catalytic Reactor successfully processed water: %s", response->message.c_str());
+            unprocessed_water_ = 0.0; // Clear stored water
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Catalytic Reactor failed: %s. Retaining processed water.", response->message.c_str());
+        }
+    } catch (const std::exception &e) {
+        RCLCPP_ERROR(this->get_logger(), "Exception while calling Catalytic Reactor service: %s", e.what());
+    }
 }
 
 int main(int argc, char **argv) {
