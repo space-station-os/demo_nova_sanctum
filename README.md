@@ -27,3 +27,4 @@ The WRS system purifies the waste accumulated from the crew and converts it into
 
 🔗 [Read the full WRS documentation](https://github.com/space-station-os/demo_nova_sanctum/blob/main/src/wrs_systems/README.md)
 
+
