@@ -22,3 +22,8 @@ The ORS simulates the oxygen generation process used on the ISS. It leverages **
 
 🔗 [Read the full ORS documentation](https://github.com/space-station-os/demo_nova_sanctum/blob/main/src/ors_systems/README.md)
 
+### **2. Water Recovery And Purification Systems (WRPS)**
+The WRS system purifies the waste accumulated from the crew and converts it into potable water that is fit for consumption. Some amount of water is also used to get oxygen by electrolysis
+
+🔗 [Read the full WRS documentation](https://github.com/space-station-os/demo_nova_sanctum/blob/main/src/wrs_systems/README.md)
+
