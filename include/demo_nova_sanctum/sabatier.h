@@ -5,6 +5,7 @@
 #include "demo_nova_sanctum/msg/sabatier.hpp"
 #include "demo_nova_sanctum/msg/air_data.hpp"
 #include "std_msgs/msg/float64.hpp"
+#include "demo_nova_sanctum/msg/electrolysis.hpp"
 #include <chrono>
 #include <memory>
 #include <string>
@@ -16,7 +17,7 @@ public:
 
 private:
   void process_air_data(const demo_nova_sanctum::msg::AirData &msg);
-  void process_hydrogen_data(const std_msgs::msg::Float64 &msg);
+  void process_hydrogen_data(const demo_nova_sanctum::msg::Electrolysis &msg);
   void compute_reaction();
   void run_reactor();
   void publish_sabatier_outputs();
@@ -74,7 +75,7 @@ private:
 
   // ROS publishers, subscribers, and timers
   rclcpp::Publisher<demo_nova_sanctum::msg::Sabatier>::SharedPtr sabatier_publisher_;
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr hydrogen_subscriber_;
+  rclcpp::Subscription<demo_nova_sanctum::msg::Electrolysis>::SharedPtr hydrogen_subscriber_;
   rclcpp::Subscription<demo_nova_sanctum::msg::AirData>::SharedPtr ars_subscriber_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

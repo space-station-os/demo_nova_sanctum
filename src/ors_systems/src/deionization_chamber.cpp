@@ -1,58 +1,91 @@
 #include "demo_nova_sanctum/ionization_bed.h"
 #include <chrono>
-#include <cmath>
-#include <algorithm>
 
 using namespace std::chrono_literals;
 
 IonizationBed::IonizationBed()
     : Node("ionization_bed"),
-      ionized_water_(0.0),
-      removed_bubble_(false),
-      contaminated_water_(0.0),
       is_active(false),
       water_(0.0),
       contaminants_(0.0),
       gas_bubbles_(0.0),
       iodine_level_(0.0) {
 
-    // Service to activate the ionization bed
-    server_ = this->create_service<std_srvs::srv::Trigger>(
-        "/ionization_bed",
-        std::bind(&IonizationBed::trigger_callback, this, std::placeholders::_1, std::placeholders::_2));
+    // Start the /deionization_chamber server to receive water
+    deionization_server_ = this->create_service<demo_nova_sanctum::srv::Water>(
+        "/deionization_chamber",
+        std::bind(&IonizationBed::handle_deionization_request, this, std::placeholders::_1, std::placeholders::_2));
 
-    // Subscriber to potable water topic
-    water_subscriber_ = this->create_subscription<demo_nova_sanctum::msg::Water>(
-        "/potable_water", 10, std::bind(&IonizationBed::potable_water, this, std::placeholders::_1));
+    // Client to send processed water to /electrolysis
+    electrolysis_client_ = this->create_client<demo_nova_sanctum::srv::Water>("/electrolysis");
 
-    // Publisher to ionized water topic
-    ionized_water_pub_ = this->create_publisher<demo_nova_sanctum::msg::Water>("/ionized_water", 10);
+    RCLCPP_INFO(this->get_logger(), "Ionization Bed Node Initialized.");
 }
 
-void IonizationBed::potable_water(const demo_nova_sanctum::msg::Water::SharedPtr msg) {
-    water_ = msg->water_level;
-    contaminants_ = msg->contaminants_level;
-    gas_bubbles_ = msg->gas_bubbles;
-    iodine_level_ = msg->iodine_level;  // Assume iodine level is part of the input message
+void IonizationBed::handle_deionization_request(
+    const std::shared_ptr<demo_nova_sanctum::srv::Water::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response) {
+    
+    if (is_active) {
+        response->success = false;
+        response->message = "Ionization bed is already processing.";
+        RCLCPP_WARN(this->get_logger(), "Ionization bed is already active.");
+        return;
+    }
+
+    // Store received water parameters
+    water_ = request->water;
+    contaminants_ = request->contaminants;
+    gas_bubbles_ = request->gas_bubbles;
+    iodine_level_ = request->iodine_level;
+
+    RCLCPP_INFO(this->get_logger(), "Received water: %.2f L, Contaminants: %.2f ppm, Iodine: %.2f ppm",
+                water_, contaminants_, iodine_level_);
+
+    // Activate processing
+    is_active = true;
+    processing_timer_ = this->create_wall_timer(
+        1s, std::bind(&IonizationBed::contamination_removal_pipeline, this));
+
+    response->success = true;
+    response->message = "Ionization bed processing started.";
+}
+
+void IonizationBed::contamination_removal_pipeline() {
+    if (water_ <= 0.0) {
+        RCLCPP_WARN(this->get_logger(), "No water available to process.");
+        is_active = false;
+        processing_timer_->cancel();
+        return;
+    }
+
+    deionization();
+    contamination_removal();
+    gas_sensor();
+
+    if (iodine_level_ == 0.0 && contaminants_ == 0.0 && gas_bubbles_ == 0.0) {
+        processing_timer_->cancel();
+        send_to_electrolysis();
+        is_active = false;
+    }
 }
 
 void IonizationBed::deionization() {
-    if (water_ >= 10.0) {  // Maximum capacity of the chamber (adjust as needed)
-        double iodine_removal_rate = 0.5;  // Rate of iodine removal per iteration
+    if (water_ >= 10.0) {
+        double iodine_removal_rate = 0.5;  // Slower removal for realistic simulation
         iodine_level_ -= iodine_removal_rate;
+        if (iodine_level_ < 0.01) iodine_level_ = 0.0;
 
-    if (iodine_level_ < 0.01) iodine_level_ = 0.0;  // Ensure it reaches a minimum safe threshold
-
-        RCLCPP_INFO(this->get_logger(), "Deionization complete. Remaining iodine: %.2f", iodine_level_);
+        RCLCPP_INFO(this->get_logger(), "Deionization in progress. Remaining iodine: %.2f", iodine_level_);
     }
 }
 
 void IonizationBed::contamination_removal() {
-    double contaminants_decrement = 2.0;  // Rate of contaminant removal
+    double contaminants_decrement = 1.5;  // Slow reduction rate
     contaminants_ -= contaminants_decrement;
     if (contaminants_ < 0.0) contaminants_ = 0.0;
 
-    RCLCPP_INFO(this->get_logger(), "Contamination removal complete. Remaining contaminants: %.2f", contaminants_);
+    RCLCPP_INFO(this->get_logger(), "Contamination removal in progress. Remaining contaminants: %.2f", contaminants_);
 }
 
 void IonizationBed::gas_sensor() {
@@ -61,76 +94,59 @@ void IonizationBed::gas_sensor() {
         open_three_way_valve();
     } else {
         RCLCPP_INFO(this->get_logger(), "No gas bubbles detected.");
+        RCLCPP_INFO(this->get_logger(), "===========================");
     }
 }
 
 void IonizationBed::open_three_way_valve() {
     RCLCPP_INFO(this->get_logger(), "Three-way valve opened. Redirecting water with gas bubbles.");
-    gas_bubbles_ = 0.0;  // Assume all bubbles are removed after redirection
+    gas_bubbles_ = 0.0;
 }
 
-void IonizationBed::contamination_removal_pipeline() {
-    if (!is_active) {
-        RCLCPP_WARN(this->get_logger(), "Ionization bed is inactive. No water is being processed.");
+void IonizationBed::send_to_electrolysis() {
+    if (!electrolysis_client_->wait_for_service(5s)) {
+        RCLCPP_ERROR(this->get_logger(), "Electrolysis service is not available!");
         return;
     }
 
-    if (water_ <= 0.0) {
-        RCLCPP_WARN(this->get_logger(), "No water available to process.");
-        return;
-    }
+    auto request = std::make_shared<demo_nova_sanctum::srv::Water::Request>();
+    request->water = water_;
+    request->contaminants = contaminants_;
+    request->iodine_level = iodine_level_;
+    request->gas_bubbles = gas_bubbles_;
+    request->pressure = 14.0;
+    request->temperature = 25.0;
 
-    // Process through the stages
-    deionization();
-    if (iodine_level_ <= 0.01) {
-        contamination_removal();
-    }
+    RCLCPP_INFO(this->get_logger(), "Sending processed water to electrolysis: %.2f L", water_);
 
-    if (contaminants_ <= 0.0) {
-        gas_sensor();
-    }
+    auto future = electrolysis_client_->async_send_request(request,
+        [this](rclcpp::Client<demo_nova_sanctum::srv::Water>::SharedFuture future) {
+            try {
+                auto response = future.get();
+                if (response->success) {
+                    RCLCPP_INFO(this->get_logger(), "Water successfully transferred to electrolysis.");
+                } else {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to send water to electrolysis: %s", response->message.c_str());
+                }
+            } catch (const std::exception &e) {
+                RCLCPP_ERROR(this->get_logger(), "Exception while calling electrolysis service: %s", e.what());
+            }
 
-    if (iodine_level_ == 0.0 && contaminants_ == 0.0 && gas_bubbles_ == 0.0) {
-        publish_processed_water();
-    }
+            // Reset active status to allow new deionization requests
+            is_active = false;
+            RCLCPP_INFO(this->get_logger(), "Ionization bed is now available for new requests.");
+        }
+    );
+
+    // Reset water after sending to electrolysis
+    water_ = 0.0;
+    contaminants_ = 0.0;
+    iodine_level_ = 0.0;
+    gas_bubbles_ = 0.0;
 }
 
-void IonizationBed::publish_processed_water() {
-    auto message = demo_nova_sanctum::msg::Water();
-    message.header.stamp = this->get_clock()->now();
-    message.header.frame_id = "ionization_bed";
 
-    message.water_level = water_;
-    message.contaminants_level = contaminants_;
-    message.gas_bubbles = gas_bubbles_;
-    message.iodine_level = iodine_level_;
-    message.pressure = 14.0;  // Simulated pressure
-    message.temperature = 25.0;  // Simulated temperature
-
-    ionized_water_pub_->publish(message);
-
-    RCLCPP_INFO(this->get_logger(), "Processed water published with 0 contaminants and iodine.");
-    RCLCPP_INFO(this->get_logger(), "Ionization bed deactivated.");
-    RCLCPP_INFO(this->get_logger(), "Water level remaining: %.2f", water_);
-}
-
-// Service callback to activate the ionization bed
-void IonizationBed::trigger_callback(const std_srvs::srv::Trigger::Request::SharedPtr request,
-                                     std_srvs::srv::Trigger::Response::SharedPtr response) {
-    if (!is_active) {
-        is_active = true;
-        response->success = true;
-        response->message = "Ionization bed activated successfully.";
-        RCLCPP_INFO(this->get_logger(), "Ionization bed activated.");
-
-        timer_ = this->create_wall_timer(1s, std::bind(&IonizationBed::contamination_removal_pipeline, this));
-    } else {
-        response->success = false;
-        response->message = "Ionization bed is already active.";
-        RCLCPP_WARN(this->get_logger(), "Ionization bed is already active.");
-    }
-}
-
+// Main Function
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<IonizationBed>());

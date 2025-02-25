@@ -11,27 +11,29 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(actionlib_msgs REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
 set(msg_files
   
-  "src/wrs_systems/msg/WasteCollection.msg"
-  "src/wrs_systems/msg/ProcessWater.msg"
-  "src/wrs_systems/msg/StorageStatus.msg"
-  "src/wrs_systems/msg/Filteration.srv"
-
   "src/ars_systems/msg/AirData.msg"
   "src/ors_systems/msg/Sabatier.msg"
   "src/ors_systems/msg/Water.msg"
+  "src/ors_systems/msg/Electrolysis.msg"
+
+  "src/wrs_systems/srv/Water.srv"
+  "src/wrs_systems/srv/Upa.srv"
+  "src/wrs_systems/srv/Distillation.srv"
+ 
 
 
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files} 
-  DEPENDENCIES  std_msgs sensor_msgs
+  DEPENDENCIES  std_msgs sensor_msgs 
 )
 
   
@@ -79,19 +81,22 @@ ament_target_dependencies(electrolysis std_srvs rosidl_default_generators rclcpp
 rosidl_target_interfaces(electrolysis ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
+add_executable(whc src/wrs_systems/src/whc_controller.cpp)
+ament_target_dependencies(whc rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(whc ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 add_executable(waste_collector src/wrs_systems/src/waste_collection.cpp)
 ament_target_dependencies(waste_collector rosidl_default_generators rclcpp sensor_msgs)
 rosidl_target_interfaces(waste_collector ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-add_executable(process_water src/wrs_systems/src/process_water.cpp)
-ament_target_dependencies(process_water rosidl_default_generators rclcpp sensor_msgs)
-rosidl_target_interfaces(process_water ${PROJECT_NAME} "rosidl_typesupport_cpp")
+add_executable(upa src/wrs_systems/src/urine_processor_assembly.cpp)
+ament_target_dependencies(upa rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(upa ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
-add_executable(filteration src/wrs_systems/src/filteration.cpp)
-ament_target_dependencies(filteration rosidl_default_generators rclcpp sensor_msgs)
-rosidl_target_interfaces(filteration ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+
+
 
 install(TARGETS
   collector
@@ -101,14 +106,14 @@ install(TARGETS
   water_pub
   deionization_bed
   electrolysis
-  
+  whc
   waste_collector
-  filteration 
-  process_water
+  upa
+
   
   DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY launch/
+  install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
 

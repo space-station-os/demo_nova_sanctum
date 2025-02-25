@@ -1,118 +1,121 @@
 #include "demo_nova_sanctum/electrolysis.h"
+#include <cmath>
 
-ElectrolysisNode::ElectrolysisNode() : Node("electrolysis_node") {
-    // Subscriber for ionized water input
-    water_sub_ = this->create_subscription<demo_nova_sanctum::msg::Water>(
-        "/ionized_water", 10, std::bind(&ElectrolysisNode::waterCallback, this, std::placeholders::_1)
-    );
+ElectrolysisNode::ElectrolysisNode() : Node("electrolysis_node"), water_available_(false) {
+    electrolysis_server_ = this->create_service<demo_nova_sanctum::srv::Water>(
+        "/electrolysis",
+        std::bind(&ElectrolysisNode::handle_electrolysis_request, this, std::placeholders::_1, std::placeholders::_2));
 
-    // Publishers for hydrogen and oxygen outputs
-    hydrogen_pub_ = this->create_publisher<std_msgs::msg::Float64>("/hydrogen", 10);
-    oxygen_pub_ = this->create_publisher<std_msgs::msg::Float64>("/oxygen_supply", 10);
-    temp_pub_ = this->create_publisher<std_msgs::msg::Float64>("/thermal_control", 10);
+    gas_pub_ = this->create_publisher<demo_nova_sanctum::msg::Electrolysis>("/electrolysis_output", 10);
 
-    // Timer to run electrolysis process at 1 Hz
-    electrolysis_timer_ = this->create_wall_timer(
-        std::chrono::seconds(1),
-        std::bind(&ElectrolysisNode::performElectrolysis, this)
-    );
-
-    // Declare and initialize ROS Parameters
-    this->declare_parameter("efficiency_factor", 1.0);  // 100% efficiency
-    this->declare_parameter("cooling_rate", 5.0);       // Cooling per second
-    this->declare_parameter("required_pressure", 2.0); // Minimum pressure for electrolysis
-    this->declare_parameter("depletion_factor", 0.3);  // 30% depletion per cycle
-
-    water_available_ = false;  // Initially, no water available
-
-    RCLCPP_INFO(this->get_logger(), "Electrolysis Node Initialized.");
+    this->declare_parameter("efficiency_factor", 0.95);
+    this->declare_parameter("required_pressure", 50.0);
+    this->declare_parameter("depletion_factor", 0.3);
+    water_status = false;
+    RCLCPP_INFO(this->get_logger(), "[INIT] Electrolysis Node Initialized. Water Available: %s", water_available_ ? "TRUE" : "FALSE");
 }
 
-void ElectrolysisNode::waterCallback(const demo_nova_sanctum::msg::Water::SharedPtr msg) {
-    if (!water_available_ || water_level_ == 0) { // Only update when water is depleted
-        water_level_ = msg->water_level;
-        pressure_ = msg->pressure;
-        temperature_ = msg->temperature;
-        water_available_ = true;
+void ElectrolysisNode::handle_electrolysis_request(
+    const std::shared_ptr<demo_nova_sanctum::srv::Water::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::Water::Response> response) {
 
-        RCLCPP_INFO(this->get_logger(), "Received New Ionized Water - Water: %f L, Pressure: %f, Temp: %f",
-                    water_level_, pressure_, temperature_);
-    }
-}
+    RCLCPP_INFO(this->get_logger(), "[Request] Before Handling: Water Available = %s", water_available_ ? "TRUE" : "FALSE");
 
-void ElectrolysisNode::performElectrolysis() {
-    if (water_level_ <= 0) {
-        RCLCPP_WARN(this->get_logger(), "Water depleted! Waiting for new water supply...");
-        water_available_ = false;
+    if (water_available_ && water_level_ > 0) {
+        response->success = false;
+        response->message = "Electrolysis is already processing a batch.";
+        RCLCPP_WARN(this->get_logger(), "[Request] Rejecting: Electrolysis is already processing a batch.");
         return;
     }
 
-    // Get parameters
+    RCLCPP_INFO(this->get_logger(), "[Request] Accepting New Water for Electrolysis.");
+
+    water_level_ = request->water;
+    pressure_ = request->pressure;
+    temperature_ = request->temperature;
+    water_available_ = true;
+
+    RCLCPP_INFO(this->get_logger(), "[Request] Received: Water: %.2f L, Pressure: %.2f, Temp: %.2f", water_level_, pressure_, temperature_);
+    response->success = true;
+    response->message = "Electrolysis started successfully.";
+
+   
+    if (!electrolysis_timer_ || electrolysis_timer_->is_canceled()) {
+        electrolysis_timer_ = this->create_wall_timer(
+            std::chrono::seconds(1),
+            std::bind(&ElectrolysisNode::performElectrolysis, this));
+    }
+
+    RCLCPP_INFO(this->get_logger(), "[Request] After Handling: Water Available = %s", water_available_ ? "TRUE" : "FALSE");
+}
+
+void ElectrolysisNode::performElectrolysis() {
+    RCLCPP_INFO(this->get_logger(), "[Electrolysis] Before Processing: Water Available = %s", water_available_ ? "TRUE" : "FALSE");
+
+    if (!water_available_ || water_level_ <= 0) {
+        RCLCPP_WARN(this->get_logger(), "[Electrolysis] No Water Available! Resetting Electrolysis State...");
+        resetElectrolysisState(water_status=true);
+        return;
+    }
+
     efficiency_factor_ = this->get_parameter("efficiency_factor").as_double();
     required_pressure_ = this->get_parameter("required_pressure").as_double();
     depletion_factor_ = this->get_parameter("depletion_factor").as_double();
 
     if (pressure_ < required_pressure_) {
-        RCLCPP_WARN(this->get_logger(), "Insufficient pressure (%f). Adjusting pressure...", pressure_);
+        RCLCPP_WARN(this->get_logger(), "[Electrolysis] Insufficient Pressure (%.2f). Adjusting Pressure...", pressure_);
         pressure_ = required_pressure_;
     }
 
-    // Stoichiometry (H₂O → H₂ + O₂)
-    double water_moles = water_level_; // Assuming 1 liter ~ 55.5 moles of H₂O
-    double hydrogen_moles = 2.0 * water_moles * efficiency_factor_;
-    double oxygen_moles = 1.0 * water_moles * efficiency_factor_;
+    double energy_required_per_mol = 237.1;
+    double water_moles = water_level_ * 55.5;
+    double total_energy = water_moles * energy_required_per_mol;
+    double actual_energy_used = total_energy * efficiency_factor_;
 
-    std_msgs::msg::Float64 hydrogen_msg;
-    hydrogen_msg.data = hydrogen_moles;
-    hydrogen_pub_->publish(hydrogen_msg);
+    double hydrogen_moles = (2.0 * water_moles * efficiency_factor_);
+    double oxygen_moles = (1.0 * water_moles * efficiency_factor_);
 
-    std_msgs::msg::Float64 oxygen_msg;
-    oxygen_msg.data = oxygen_moles;
-    oxygen_pub_->publish(oxygen_msg);
+    water_level_ *= (1.0 - depletion_factor_);
 
-    RCLCPP_INFO(this->get_logger(), "Electrolysis: Produced H₂ = %f moles, O₂ = %f moles", hydrogen_moles, oxygen_moles);
+    if (water_level_ <= 2.0) {
+        
+        RCLCPP_WARN(this->get_logger(), "[Electrolysis] Water Fully Depleted! Resetting...");
+        resetElectrolysisState(water_status=true);
+    }
 
-    // Reduce water level by 30%
-    double new_water_level = water_level_ * (1.0 - depletion_factor_);
-    water_level_ = (new_water_level > 0) ? new_water_level : 0;  // Prevent negative water level
+    RCLCPP_INFO(this->get_logger(), "[Electrolysis] Remaining Water After Processing: %.2f L", water_level_);
+    publishElectrolysisData(hydrogen_moles, oxygen_moles, actual_energy_used);
 
-    RCLCPP_INFO(this->get_logger(), "Water Reduced: %f L remaining.", water_level_);
-
-    // Send remaining water to recirculation loop
-    recirculationLoop();
+    RCLCPP_INFO(this->get_logger(), "[Electrolysis] After Processing: Water Available = %s", water_available_ ? "TRUE" : "FALSE");
 }
 
-void ElectrolysisNode::recirculationLoop() {
-    // Get cooling rate from parameters
-    cooling_rate_ = this->get_parameter("cooling_rate").as_double();
 
-    double cooling_tank_temp = temperature_;
-    
-    while (cooling_tank_temp > 25.0) {
-        cooling_tank_temp -= cooling_rate_;
+void ElectrolysisNode::publishElectrolysisData(double hydrogen_moles, double oxygen_moles, double energy_used) {
+    auto gas_msg = demo_nova_sanctum::msg::Electrolysis();
+    gas_msg.header.stamp = this->get_clock()->now();
+    gas_msg.h2 = hydrogen_moles;
+    gas_msg.o2 = oxygen_moles;
+    gas_msg.temperature.temperature = temperature_ + (energy_used / 1000);
+    gas_msg.pressure.fluid_pressure = pressure_ + (hydrogen_moles * 0.1);
 
-        RCLCPP_INFO(this->get_logger(), "Cooling Tank: Temp = %f C", cooling_tank_temp);
+    gas_pub_->publish(gas_msg);
 
-        std_msgs::msg::Float64 temp_msg;
-        temp_msg.data = cooling_tank_temp;
-        temp_pub_->publish(temp_msg);
-    }
+    RCLCPP_INFO(this->get_logger(), "===========================");
+    RCLCPP_INFO(this->get_logger(), "[Publish] Electrolysis: Produced H₂ = %.2f moles, O₂ = %.2f moles", hydrogen_moles, oxygen_moles);
+    RCLCPP_INFO(this->get_logger(), "[Publish] Temperature: %.2f C, Pressure: %.2f Pa", temperature_, pressure_);
+    RCLCPP_INFO(this->get_logger(), "===========================");
+}
 
-    // Adjust pressure for next electrolysis cycle
-    if (pressure_ < required_pressure_) {
-        pressure_ = required_pressure_;
-    }
-
-    // Loop control: if water is still available, continue electrolysis
-    if (water_level_ > 0) {
-        RCLCPP_INFO(this->get_logger(), "Water Recycled: %f L available for next electrolysis cycle.", water_level_);
-    } else {
-        RCLCPP_WARN(this->get_logger(), "Water fully depleted! Waiting for new ionized water input...");
+void ElectrolysisNode::resetElectrolysisState(bool water_status) {
+    if ( water_status ) {
+        RCLCPP_WARN(this->get_logger(), "[Reset] Resetting Electrolysis State...");
         water_available_ = false;
+        water_level_ = 0.0;
+        RCLCPP_INFO(this->get_logger(), "[Reset] Electrolysis is now available for new water.");
     }
+    RCLCPP_INFO(this->get_logger(), "[Reset] After Reset: Water Available = %s", water_available_ ? "TRUE" : "FALSE");
 }
 
-// Main function
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<ElectrolysisNode>());

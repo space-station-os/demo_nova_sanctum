@@ -36,13 +36,13 @@ def generate_launch_description():
             emulate_tty=True
         ),
         
-        Node(
-            package='demo_nova_sanctum',
-            executable='sabatier',
-            name='sabatier_reaction',
-            output='screen',
-            emulate_tty=True
-        ),
+        # Node(
+        #     package='demo_nova_sanctum',
+        #     executable='sabatier',
+        #     name='sabatier_reaction',
+        #     output='screen',
+        #     emulate_tty=True
+        # ),
         
     
     ])

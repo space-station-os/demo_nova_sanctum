@@ -1,102 +1,62 @@
-#include "demo_nova_sanctum/waste_collector.h"
+#include "demo_nova_sanctum/waste_tank.h"
 
-WasteCollection::WasteCollection() : Node("waste_collection") {
-   
-    total_volume_ = 0.0;
-    source_ = 0;  
-
-    waste_map_ = {{"Urine", 0.0}, {"Humidity Condensate", 0.0}, {"Bath/Wash", 0.0}};
-
-    waste_collection_pub_ = this->create_publisher<demo_nova_sanctum::msg::WasteCollection>("/waste_collection", 10);
-
-    storage_status_pub_ = this->create_publisher<demo_nova_sanctum::msg::StorageStatus>("/storage_status", 10);
-
+UrineTank::UrineTank() : Node("urine_tank"), current_volume(0.0) {
+    // Declare and get parameters (allow changes via param server)
+    this->declare_parameter("tank_capacity", 22.0);
+    this->declare_parameter("processing_threshold", 20.0);
+    this->declare_parameter("flush_volume", 1.0);
     
-    timer_ = this->create_wall_timer(5s, std::bind(&WasteCollection::simulate_waste_collection, this));
+    tank_capacity = this->get_parameter("tank_capacity").as_double();
+    processing_threshold = this->get_parameter("processing_threshold").as_double();
+    flush_volume = this->get_parameter("flush_volume").as_double();
 
-    RCLCPP_INFO(this->get_logger(), "Waste Collection Node Initialized");
+    // Subscriber to urine accumulation
+    water_subscriber_ = this->create_subscription<std_msgs::msg::Float64>(
+        "/whc/water_volume", 10, std::bind(&UrineTank::water_callback, this, std::placeholders::_1)
+    );
+
+    // Service client to send urine to UPA
+    upa_client_ = this->create_client<demo_nova_sanctum::srv::Upa>("/upa/process_urine");
+
+    RCLCPP_INFO(this->get_logger(), "Urine Tank Node Initialized");
 }
 
-void WasteCollection::simulate_waste_collection() {
-    auto msg = demo_nova_sanctum::msg::WasteCollection();
+void UrineTank::water_callback(const std_msgs::msg::Float64::SharedPtr msg) {
+    current_volume += msg->data;
+    RCLCPP_INFO(this->get_logger(), "Tank received %.2f liters. Current volume: %.2f liters", msg->data, current_volume);
 
-    // Simulate waste collection from different sources
-    switch (source_) {
-        case 0:
-            msg.source = 0;  
-            msg.volume = 50.0;  
-            waste_map_["Urine"] += msg.volume;
-            break;
+    // If tank reaches limit, send urine to UPA
+    if (current_volume >= processing_threshold) {
+        process_urine();
+    }
+}
 
-        case 1:
-            msg.source = 1;  
-            msg.volume = 30.0;  
-            waste_map_["Humidity Condensate"] += msg.volume;
-            break;
-
-        case 2:
-            msg.source = 2;  
-            msg.volume = 100.0;  
-            waste_map_["Bath/Wash"] += msg.volume;
-            break;
-
-        default:
-            RCLCPP_WARN(this->get_logger(), "Unknown Source");
-            return;
+void UrineTank::process_urine() {
+    if (!upa_client_->wait_for_service(std::chrono::seconds(2))) {
+        RCLCPP_ERROR(this->get_logger(), "UPA service unavailable");
+        return;
     }
 
-   
-    total_volume_ += msg.volume;
-    waste_collection_pub_->publish(msg);
+    auto request = std::make_shared<demo_nova_sanctum::srv::Upa::Request>();
+    request->urine = current_volume;  // Send current tank urine to UPA
 
-    RCLCPP_INFO(this->get_logger(), "Collected %.2f liters from source: %u. Total Volume: %.2f liters.",
-                msg.volume, msg.source, total_volume_);
-
+    auto future_result = upa_client_->async_send_request(request);
     
-    
-    auto storage_msg = demo_nova_sanctum::msg::StorageStatus();
+    // Handle response asynchronously
+    future_result.wait();
+    auto response = future_result.get();
 
-    
-    storage_msg.tank_1 = 0.0;          
-    storage_msg.tank_2 = total_volume_;  
-
-    if (total_volume_ > 200.0) {
-        storage_msg.status = 1;  
+    if (response->success) {
+        RCLCPP_INFO(this->get_logger(), "UPA processed urine successfully: %s", response->message.c_str());
+        current_volume = 0.0;  // Empty tank after processing
     } else {
-        storage_msg.status = 0;
+        RCLCPP_WARN(this->get_logger(), "UPA failed to process urine: %s", response->message.c_str());
     }
-     
-   
-    storage_status_pub_->publish(storage_msg);
-
-    RCLCPP_INFO(this->get_logger(), "Tank 2 (Waste Collector) Status Updated: %.2f liters.", storage_msg.tank_2);
-    source_ = (source_ == 2) ? 0 : source_ + 1;
-
 }
-
-// void WasteCollection::publish_storage_status() {
-//     auto storage_msg = demo_nova_sanctum::msg::StorageStatus();
-
-    
-//     storage_msg.tank_1 = 0.0;          
-//     storage_msg.tank_2 = total_volume_;  
-
-//     if (total_volume_ > 200.0) {
-//         storage_msg.status = 1;  
-//     } else {
-//         storage_msg.status = 0;
-//     }
-     
-   
-//     storage_status_pub_->publish(storage_msg);
-
-//     // Log the updated storage status
-//     RCLCPP_INFO(this->get_logger(), "Tank 2 (Waste Collector) Status Updated: %.2f liters.", storage_msg.tank_2);
-// }
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<WasteCollection>());
+    rclcpp::spin(std::make_shared<UrineTank>());
     rclcpp::shutdown();
     return 0;
 }
