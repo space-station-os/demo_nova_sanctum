@@ -15,8 +15,26 @@ WasteHygieneCompartment::WasteHygieneCompartment()
 }
 
 void WasteHygieneCompartment::urine_callback(const sensor_msgs::msg::Range::SharedPtr msg) {
-    if (msg->range < 0.1) { // Assuming <0.1m means urine flow stopped
-        RCLCPP_INFO(this->get_logger(), "Urination completed. Adding pretreatment and flushing...");
+    static bool urine_detected = false;  // Track ongoing urination
+    static rclcpp::Time last_urine_time = this->now();  // Store last detected urine timestamp
+
+    // RCLCPP_INFO(this->get_logger(), "[whc] Crew detected at %.2f meters...", msg->range);
+
+    if (msg->range <0.6) { 
+        urine_detected = true;
+        last_urine_time = this->now();  
+        if (urine_detected){
+            timer_=this->create_wall_timer(2s, std::bind(&WasteHygieneCompartment::publish_total_water, this));
+        }
+        return;
+    }
+
+    // If urine was detected before, and now there’s no detection for 2 seconds → Flush
+    if (urine_detected && (this->now() - last_urine_time).seconds() > 2.0) {
+        RCLCPP_INFO(this->get_logger(), "[whc] Urination completed. Adding pretreatment and flushing...");
+
+        // Reset urine detection flag
+        urine_detected = false;
 
         // Add Pretreatment
         add_pretreatment();
@@ -25,27 +43,28 @@ void WasteHygieneCompartment::urine_callback(const sensor_msgs::msg::Range::Shar
         flush();
 
         // Publish total accumulated water
-        publish_total_water();
+       
     }
 }
 
+
 void WasteHygieneCompartment::add_pretreatment() {
-    RCLCPP_INFO(this->get_logger(), "Adding %.2f liters of pretreatment...", pretreatment_volume);
+    // RCLCPP_INFO(this->get_logger(), "[whc] Adding %.2f liters of pretreatment...", pretreatment_volume);
     total_water_volume += pretreatment_volume;
 }
 
 void WasteHygieneCompartment::flush() {
-    RCLCPP_INFO(this->get_logger(), "Flushing with %.2f liters of water...", flush_volume);
+    // RCLCPP_INFO(this->get_logger(), "[whc] Flushing with %.2f liters of water...", flush_volume);
     total_water_volume += flush_volume;
 }
 
 void WasteHygieneCompartment::publish_total_water() {
-    total_water_volume += urine_volume;  // Include urine into the total count
+    total_water_volume += urine_volume; 
     std_msgs::msg::Float64 msg;
     msg.data = total_water_volume;
     water_volume_publisher_->publish(msg);
 
-    RCLCPP_INFO(this->get_logger(), "Total accumulated water: %.2f liters", total_water_volume);
+    RCLCPP_INFO(this->get_logger(), "[whc] Total accumulated water: %.2f liters", total_water_volume);
 
     // Reset total water volume after publishing (assuming cycle restarts)
     total_water_volume = 0.0;

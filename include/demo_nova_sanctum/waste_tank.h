@@ -1,28 +1,30 @@
-#ifndef URINE_TANK_HPP
-#define URINE_TANK_HPP
+#ifndef WHC_WASTE_TANK_HPP
+#define WHC_WASTE_TANK_HPP
 
 #include <rclcpp/rclcpp.hpp>
-#include "std_msgs/msg/float64.hpp"
 #include "demo_nova_sanctum/srv/upa.hpp"
-#include <chrono>
-#include <memory>
-#include <string>
-#include <vector>
 
-class UrineTank : public rclcpp::Node {
-private:
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr water_subscriber_;
-    rclcpp::Client<demo_nova_sanctum::srv::Upa>::SharedPtr upa_client_;
-    
-    double tank_capacity;   // Max urine tank capacity before processing
-    double current_volume;  // Track urine accumulation
-    double flush_volume;    // Water used per flush
-    double processing_threshold;  // When to send urine to UPA
-
+class WHCWasteTank : public rclcpp::Node {
 public:
-    UrineTank();
-    void water_callback(const std_msgs::msg::Float64::SharedPtr msg);
-    void process_urine();
+    WHCWasteTank();
+
+private:
+    rclcpp::Client<demo_nova_sanctum::srv::Upa>::SharedPtr upa_client_;
+    rclcpp::TimerBase::SharedPtr retry_timer_;
+    rclcpp::TimerBase::SharedPtr urine_collection_timer_;
+
+    double urine_volume_;
+    double pretreatment_volume_;
+    double flush_volume_;
+    double total_water_volume_;
+    double tank_capacity_;
+    double processing_threshold_;
+    bool upa_available_;
+
+    void simulate_urine_collection();
+    void process_waste_transfer();
+    void process_urine_response(rclcpp::Client<demo_nova_sanctum::srv::Upa>::SharedFuture future);
+    void retry_process_waste_transfer();
 };
 
-#endif // URINE_TANK_HPP
+#endif // WHC_WASTE_TANK_HPP

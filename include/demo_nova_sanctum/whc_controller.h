@@ -4,12 +4,14 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/range.hpp"
 #include "std_msgs/msg/float64.hpp"
+#include <chrono>
 
+using namespace std::chrono_literals;
 class WasteHygieneCompartment : public rclcpp::Node {
 private:
     rclcpp::Subscription<sensor_msgs::msg::Range>::SharedPtr ultrasound_subscriber_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr water_volume_publisher_;
-
+    rclcpp::TimerBase::SharedPtr timer_;
     bool urination_detected;
     double urine_volume;         // in liters (approx. 0.3L per urination)
     double pretreatment_volume;  // in liters (~0.05L per cycle)
