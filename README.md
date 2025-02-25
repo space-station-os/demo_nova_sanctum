@@ -28,14 +28,3 @@ The WRS system purifies the waste accumulated from the crew and converts it into
 🔗 [Read the full WRS documentation](https://github.com/space-station-os/demo_nova_sanctum/blob/main/src/wrs_systems/README.md)
 
 
-
-
-### TO USE DOCKER 
-
-1. cd ~/ros2ws/src/demo_nova_sanctum/docker 
-2. bash build.sh 
-3. docker images 
-4. docker-compose up -d
-5. docker-compose exec nova_sanctum bash
-
-
