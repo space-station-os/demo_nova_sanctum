@@ -86,7 +86,7 @@ void AdsorbentBed::process_co2() {
     double co2_retained = co2_decrement - co2_to_space;         
 
     co2_ -= co2_decrement;
-    if (co2_ < 0.0) co2_ = 0.0;
+    if (co2_ < 1.0) co2_ = 0.0;
 
     retained_co2_cumulative_ += co2_retained;
 
