@@ -36,35 +36,52 @@ DesiccantServer::DesiccantServer()
   // Client for Adsorbent Server
   adsorbent_server_client_ = this->create_client<demo_nova_sanctum::srv::CrewQuarters>("/adsorbent_server");
 
+
+  adsorbent_co2_service_ = this->create_service<demo_nova_sanctum::srv::CrewQuarters>(
+    "/processed_air_service",
+    std::bind(&DesiccantServer::handle_moisture_request, this, std::placeholders::_1, std::placeholders::_2));
+
   RCLCPP_INFO(this->get_logger(), "Desiccant Server successfully initialized.");
 }
 
 void DesiccantServer::handle_air_processing_request(
-    const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
-    std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response) {
+  const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+  std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response) {
 
-    if (is_active_) {
-        response->success = false;
-        response->message = "Desiccant Bed is still processing the previous batch.";
-        RCLCPP_WARN(this->get_logger(), "New air request rejected. Still processing previous batch.");
-        return;
-    }
+  if (is_active_ && request->co2_mass > 0.0) {  // Only reject new unprocessed air
+      response->success = false;
+      response->message = "Desiccant Bed is still processing the previous batch.";
+      RCLCPP_WARN(this->get_logger(), "New air request rejected. Still processing previous batch.");
+      return;
+  }
 
-    // Accept air for processing
-    is_active_ = true;
-    co2_ = request->co2_mass;
-    moisture_content_ = request->moisture_content;
-    contaminants_ = request->contaminants;
+  // **Check if this is the returned processed air from Adsorbent Bed**
+  if (request->co2_mass == 0.0) {
+      RCLCPP_INFO(this->get_logger(), "Received processed air from Adsorbent Bed. Reintroducing moisture...");
+      moisture_content_ = request->moisture_content;
+      contaminants_ = request->contaminants;
+      is_active_ = false;  // Ready for next cycle
+      response->success = true;
+      response->message = "Desiccant Bed received processed air and is ready.";
+      return;
+  }
 
-    RCLCPP_INFO(this->get_logger(), "Accepted new air batch: CO₂=%.2f g, Moisture=%.2f %%, Contaminants=%.2f %%",
-                co2_, moisture_content_, contaminants_);
+  // Normal air processing
+  is_active_ = true;
+  co2_ = request->co2_mass;
+  moisture_content_ = request->moisture_content;
+  contaminants_ = request->contaminants;
 
-    // Start processing
-    timer_ = this->create_wall_timer(500ms, std::bind(&DesiccantServer::process_air_data, this));
+  RCLCPP_INFO(this->get_logger(), "Accepted new air batch: CO₂=%.2f g, Moisture=%.2f %%, Contaminants=%.2f %%",
+              co2_, moisture_content_, contaminants_);
 
-    response->success = true;
-    response->message = "Desiccant Bed started processing the new batch.";
+  // Start processing
+  timer_ = this->create_wall_timer(500ms, std::bind(&DesiccantServer::process_air_data, this));
+
+  response->success = true;
+  response->message = "Desiccant Bed started processing the new batch.";
 }
+
 
 void DesiccantServer::process_air_data() {
   std::lock_guard<std::mutex> lock(data_mutex_);
@@ -101,10 +118,12 @@ void DesiccantServer::process_air_data() {
   RCLCPP_INFO(this->get_logger(),
               "Processing air: Remaining Moisture: %.2f %%, Remaining Contaminants: %.2f %%",
               moisture_content_, contaminants_);
+  RCLCPP_INFO(this->get_logger(),"==============================================");
 
   // **Send air to Adsorbent Bed ONLY after confirming minimal moisture**
   if (moisture_content_ <= 0.3 && contaminants_ <= 0.3) {
     RCLCPP_INFO(this->get_logger(), "Minimal moisture & contaminants. Sending air to Adsorbent Bed...");
+    RCLCPP_INFO(this->get_logger(),"==============================================");
     send_to_adsorbent_bed();
   }
 }
@@ -145,6 +164,45 @@ void DesiccantServer::send_to_adsorbent_bed() {
       }
   );
 }
+
+
+void DesiccantServer::handle_moisture_request(
+  const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+  std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response) {
+
+  if (is_active_dessicant) {
+      response->success = false;
+      response->message = "Desiccant Bed 2 is still processing the previous batch.";
+      RCLCPP_WARN(this->get_logger(), "New air request rejected. Still processing previous batch.");
+      return;
+  }
+
+  // Accept air for processing
+  is_active_dessicant = true;
+  co2_ = request->co2_mass;
+  contaminants_ = request->contaminants;
+  double target_moisture = request->moisture_content;  // Desired final moisture level
+  double increment = 0.5;  // Moisture increase step
+
+  moisture_content_ = 0.0;  // Start from dry
+  RCLCPP_INFO(this->get_logger(), "Starting humidification process... Target Moisture: %.2f%%", target_moisture);
+  RCLCPP_INFO(this->get_logger(),"==============================================");
+  // Incrementally increase moisture in a loop
+  while (moisture_content_ < target_moisture) {
+      moisture_content_ += increment;
+      if (moisture_content_ > target_moisture) {
+          moisture_content_ = target_moisture;
+      }
+      RCLCPP_INFO(this->get_logger(), "Moisture level: %.2f%%", moisture_content_);
+  }
+
+  RCLCPP_INFO(this->get_logger(), "Target moisture level reached.");
+  process_air_data();  // Process air after reaching moisture target
+  RCLCPP_INFO(this->get_logger(),"==============================================");
+  response->success = true;
+  response->message = "Desiccant Bed started processing the new batch.";
+}
+
 
 
 void DesiccantServer::temperature_callback(const sensor_msgs::msg::Temperature::SharedPtr msg) {

@@ -61,7 +61,9 @@ private:
    */
   void handle_air_processing_request(const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
                                      std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
-
+  
+  void handle_moisture_request(const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+                                      std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
   /**
    * @brief Gradually reduces moisture and contaminants based on temperature and pressure effects.
    */
@@ -115,7 +117,7 @@ private:
   /*** ROS INTERFACES ***/
   rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr crew_co2_service_; ///< Processes incoming air
   rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr adsorbent_server_client_; ///< Sends air to Adsorbent Bed
-
+  rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr adsorbent_co2_service_; ///< Sends processed air to Adsorbent Bed
   rclcpp::Subscription<sensor_msgs::msg::Temperature>::SharedPtr temperature_subscriber_; ///< Listens to /temperature
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_subscriber_; ///< Listens to /pipe_pressure
 
@@ -128,7 +130,8 @@ private:
   int service_unavailable_count_; ///< Tracks service failures to prevent system errors
 
   /*** ACTIVE STATE ***/
-  bool is_active_; ///< Indicates if the desiccant bed is currently processing air
+  bool is_active_; //< Indicates if the desiccant bed 1 is currently processing air
+  bool is_active_dessicant;///< Indicates if the desiccant bed 2 is currently processing air
 };
 
 #endif // DEMO_NOVA_SANCTUM_DESICCANT_TANK_HPP_

@@ -29,7 +29,7 @@ Sabatier::Sabatier()
       last_ghsv_error_(0.0) {
 
   ars_subscriber_ = this->create_subscription<demo_nova_sanctum::msg::AirData>(
-      "/processed_co2", 10,
+      "/co2", 10,
       std::bind(&Sabatier::process_air_data, this, std::placeholders::_1));
 
   sabatier_publisher_ = this->create_publisher<demo_nova_sanctum::msg::Sabatier>(
@@ -66,16 +66,16 @@ void Sabatier::run_reactor() {
   RCLCPP_INFO(this->get_logger(), "Running Sabatier reactor...");
   double temp_control_signal = pid_temperature(desired_temp_, reactor_temp_);
   double pressure_control_signal = pid_pressure(desired_pressure_, reactor_pressure_);
-  double ghsv_control_signal = pd_ghsv(ghsv_, total_inlet_flow_);
+  // double ghsv_control_signal = pd_ghsv(ghsv_, total_inlet_flow_);
 
   // Update reactor parameters based on control signals
   reactor_temp_ += temp_control_signal;
   reactor_pressure_ += pressure_control_signal;
-  ghsv_ += ghsv_control_signal;
+  // ghsv_ += ghsv_control_signal;
 
 
-  RCLCPP_INFO(this->get_logger(), "Reactor Temp: %.2f C, Pressure: %.2f psi, GHSV: %.2f hr^-1",
-              reactor_temp_, reactor_pressure_, ghsv_);
+  RCLCPP_INFO(this->get_logger(), "Reactor Temp: %.2f C, Pressure: %.2f psi",
+              reactor_temp_, reactor_pressure_);
 
   compute_reaction();
   publish_sabatier_outputs();

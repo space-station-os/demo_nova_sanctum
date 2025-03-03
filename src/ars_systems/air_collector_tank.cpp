@@ -97,6 +97,7 @@ void AirCollector::timer_callback()
 
   RCLCPP_INFO(this->get_logger(), "CO₂ Mass: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
               co2_mass_, moisture_content_, contaminants_);
+  RCLCPP_INFO(this->get_logger(),"==============================================");
 
   if (co2_mass_ > co2_threshold_ || moisture_content_ > moisture_threshold_ || contaminants_ > contaminants_threshold_) 
   {
@@ -130,7 +131,7 @@ void AirCollector::send_air_to_desiccant_bed() {
   request->contaminants = contaminants_;
 
   RCLCPP_INFO(this->get_logger(), "Requesting Desiccant Bed to process air batch...");
-
+  RCLCPP_INFO(this->get_logger(),"==============================================");
   // ✅ Fix: Bind function correctly (no parentheses after function name)
   auto future = desiccant_bed_client_->async_send_request(request,
     std::bind(&AirCollector::process_desiccant_response, this, std::placeholders::_1));
