@@ -112,7 +112,7 @@ void AdsorbentBed::process_co2() {
   }
 
   // Stop processing if all CO2 has been removed
-  if (co2_ <= 0.0) {
+  if (co2_ <= 1.0) {
     RCLCPP_INFO(this->get_logger(), "All CO2 has been processed. Total retained CO2: %.2f g.", retained_co2_cumulative_);
     is_active_ = false; 
   }
