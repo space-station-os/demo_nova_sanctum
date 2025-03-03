@@ -19,6 +19,9 @@ find_package(actionlib_msgs REQUIRED)
 set(msg_files
   
   "src/ars_systems/msg/AirData.msg"
+  "src/ars_systems/srv/CrewQuarters.srv"
+
+  
   "src/ors_systems/msg/Sabatier.msg"
   "src/ors_systems/msg/Water.msg"
   "src/ors_systems/msg/Electrolysis.msg"
