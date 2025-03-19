@@ -6,7 +6,7 @@
 #include "sensor_msgs/msg/fluid_pressure.hpp"
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
 #include <mutex>
-
+#include "demo_nova_sanctum/msg/cdra_status.hpp"
 /**
  * @brief A simple PID Controller for temperature and pressure regulation.
  */
@@ -61,7 +61,12 @@ private:
    */
   void handle_air_processing_request(const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
                                      std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
-  
+  void handle_adsorbed_air(const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+                           std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
+  /**
+   * @brief Gradually increases moisture to the desired level.
+   */ 
+
   void handle_moisture_request(const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
                                       std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
   /**
@@ -109,7 +114,8 @@ private:
   /*** ENVIRONMENTAL VARIABLES ***/
   double current_temperature_;  ///< Current chamber temperature
   double current_pressure_;     ///< Current chamber pressure
-
+  double processing_speed_;
+  double max_processing_speed_;
   /*** TEMPERATURE & PRESSURE CONTROL USING PID ***/
   PIDController temp_pid_;      ///< PID Controller for temperature regulation
   PIDController press_pid_;     ///< PID Controller for pressure regulation
@@ -120,9 +126,12 @@ private:
   rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr adsorbent_co2_service_; ///< Sends processed air to Adsorbent Bed
   rclcpp::Subscription<sensor_msgs::msg::Temperature>::SharedPtr temperature_subscriber_; ///< Listens to /temperature
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_subscriber_; ///< Listens to /pipe_pressure
-
+  rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_;
+  rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_bed_2;
   rclcpp::TimerBase::SharedPtr timer_; ///< Timer for gradual air processing
+  
 
+  demo_nova_sanctum::msg::CdraStatus cdra; ///< CDRA status message
   /*** THREAD SAFETY ***/
   std::mutex data_mutex_; ///< Ensures thread safety when modifying shared air properties
 
@@ -131,7 +140,8 @@ private:
 
   /*** ACTIVE STATE ***/
   bool is_active_; //< Indicates if the desiccant bed 1 is currently processing air
-  bool is_active_dessicant;///< Indicates if the desiccant bed 2 is currently processing air
+  bool is_active_dessicant;
+  bool is_active_desiccant2; ///< Indicates if the desiccant bed 2 is currently processing air
 };
 
 #endif // DEMO_NOVA_SANCTUM_DESICCANT_TANK_HPP_

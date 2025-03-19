@@ -5,9 +5,10 @@
 #include "sensor_msgs/msg/temperature.hpp"
 #include "sensor_msgs/msg/fluid_pressure.hpp"
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
+#include "demo_nova_sanctum/msg/cdra_status.hpp"
 
 /**
- * @brief A simple PID Controller for temperature and pressure regulation.
+ * @brief A simple PD Controller for temperature and pressure regulation.
  */
 struct PIDController
 {
@@ -16,7 +17,7 @@ struct PIDController
   double integral = 0.0;
 
   /**
-   * @brief Computes the PID output given the setpoint and measured value.
+   * @brief Computes the PD output given the setpoint and measured value.
    * 
    * @param setpoint The desired target value.
    * @param measured The current measured value.
@@ -28,7 +29,7 @@ struct PIDController
     double error = setpoint - measured;
     integral += error * dt;
     double derivative = (error - prev_error) / dt;
-    double output = (kp * error) + (ki * integral) + (kd * derivative);
+    double output = (kp * error) + (kd * derivative);
     prev_error = error;
     return output;
   }
@@ -60,6 +61,11 @@ private:
   void timer_callback();
 
   /**
+   * @brief Simulates temperature and pressure changes based on system activity.
+   */
+  void simulate_temperature_pressure();
+
+  /**
    * @brief Sends CO₂, moisture, and contaminants data to the Desiccant Bed.
    * - Ensures the Desiccant Bed is available before sending.
    * - Holds air if the service is unavailable.
@@ -67,18 +73,23 @@ private:
    */
   void send_air_to_desiccant_bed();
 
-  void process_desiccant_response(rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedFuture future);
   /**
-   * @brief Opens the air valve after a successful CO₂ scrubbing request.
+   * @brief Handles the response from the Desiccant Bed service.
+   * @param future Future object containing the service response.
    */
-  void open_valve();
+  void process_desiccant_response(rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedFuture future);
 
-  /*** DYNAMIC PARAMETERS ***/
+  /**
+   * @brief Updates `C_activity_` dynamically based on the mode of operation.
+   */
+  void update_c_activity();
+
+  /*** SYSTEM PARAMETERS ***/
   double flow_rate_;          ///< Flow rate in SCFM
   double co2_intake_;         ///< CO₂ intake in mmHg
   int crew_onboard_;          ///< Number of astronauts onboard
   double cabin_pressure_;     ///< Cabin pressure in PSI
-  double temperature_cutoff_; ///< Temperature cutoff in Celsius
+  double temperature_cutoff_; ///< Maximum temperature cutoff in Celsius
   int max_crew_limit_;        ///< Maximum crew capacity
   double power_consumption_;  ///< Power consumption in kW
   double tank_capacity_;      ///< Maximum tank capacity for air mass in grams
@@ -96,19 +107,16 @@ private:
   double contaminants_;     ///< Contaminants in percentage
   double total_air_mass_;   ///< Total air mass in grams
 
-  /*** TEMPERATURE & PRESSURE CONTROL USING PID ***/
-  PIDController temp_pid_;  ///< PID Controller for temperature regulation
-  PIDController press_pid_; ///< PID Controller for pressure regulation
-  double current_temp_;     ///< Current simulated temperature
+  /*** TEMPERATURE & PRESSURE CONTROL USING PD ***/
+  PIDController temp_pid_;  ///< PD Controller for temperature regulation
+  PIDController press_pid_; ///< PD Controller for pressure regulation
+  double current_temperature_; ///< Current simulated temperature
   double current_pressure_; ///< Current simulated pressure
+  double prev_temp_error_;  ///< Previous error for temperature regulation
+  double prev_press_error_; ///< Previous error for pressure regulation
 
   /*** DYNAMIC C_ACTIVITY BASED ON SYSTEM MODE ***/
   double C_activity_;  ///< CO₂ production rate per astronaut based on mode
-
-  /**
-   * @brief Updates C_activity dynamically based on the mode of operation.
-   */
-  void update_c_activity();
 
   /*** MODE CHANGE DETECTION ***/
   std::string previous_mode_; ///< Stores the last mode to detect changes
@@ -116,11 +124,15 @@ private:
   /*** SERVICE AVAILABILITY TRACKING ***/
   int service_unavailable_count_; ///< Tracks how many times the service was unavailable
 
+  /*** STATUS MESSAGE ***/
+  demo_nova_sanctum::msg::CdraStatus cdra; ///< CDRA status message
+
   /*** ROS INTERFACES ***/
   rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr temperature_publisher_; ///< Publishes /temperature
   rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_publisher_;  ///< Publishes /pipe_pressure
-  rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_bed_client_;     ///< Calls Desiccant Bed service when needed
+  rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_bed_client_; ///< Calls Desiccant Bed service when needed
   rclcpp::TimerBase::SharedPtr timer_; ///< Timer for periodic updates
+  rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_; ///< Publishes CDRA status
 };
 
 #endif // DEMO_NOVA_SANCTUM_AIR_COLLECTOR_TANK_HPP_
