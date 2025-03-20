@@ -11,6 +11,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        # Air Collector Node
         Node(
             package='demo_nova_sanctum',
             executable='collector',
@@ -20,6 +21,7 @@ def generate_launch_description():
             emulate_tty=True
         ),
 
+        # Desiccant Bed Node
         Node(
             package='demo_nova_sanctum',
             executable='desiccant',
@@ -29,10 +31,31 @@ def generate_launch_description():
             emulate_tty=True
         ),
         
+        # # Adsorbent Bed Node
+        # Node(
+        #     package='demo_nova_sanctum',
+        #     executable='adsorbent',
+        #     name='adsorbent_bed',
+        #     output='screen',
+        #     parameters=[params_file],
+        #     emulate_tty=True
+        # ),
+
+        # Büchi Automaton Node (Python)
         Node(
             package='demo_nova_sanctum',
-            executable='adsorbent',
-            name='adsorbent_bed',
+            executable='buchi_automaton.py',
+            name='buchi_automaton',
+            output='screen',
+            parameters=[params_file],
+            emulate_tty=True
+        ),
+
+        # Product Automaton Node (Python)
+        Node(
+            package='demo_nova_sanctum',
+            executable='failure_monitor.py',
+            name='product_automaton',
             output='screen',
             parameters=[params_file],
             emulate_tty=True
