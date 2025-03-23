@@ -1,27 +1,42 @@
-/ars_system:
+air_collector_node:
   ros__parameters:
-    # Astronaut params
+    flow_rate: 28.0  # Flow rate in SCFM
+    co2_intake: 1.04 # CO2 intake in mmHg
     crew_onboard: 4
-    co2_intake: 1.04 #mmHG 
-    max_crew_limit: 6 
-    
-
-    #ARSys params
-    system_name: "ARS"
-    frame_id: "ars"
-    mode_of_operation: "standby" #[standby,active,emergency]
-    adsorbent_type: "13X" #[13X,5A,APG_III,VSA-10]
-    co2_removal_rate: 4.50 #kg/day 
-    flow_rate: 28 #Standard cubic feet per minute 
-    temperature_cutoff: 450 #Celsius
-    cabin_pressure: 14.7 #PSI
-
-
-    #power_consumption
-    power_consumption: 1 #kW
-
-    #Removal efficiency
-    to_space : 0.50 
-    to_sabatier: 0.50
+    cabin_pressure: 14.7  # Cabin pressure in PSI
+    temperature_cutoff: 450.0  # Temperature cutoff in Celsius
+    max_crew_limit: 6
+    power_consumption: 1.0  # Power in kW
+    tank_capacity: 1000.0  # Air tank capacity in grams
+    system_name: "demo_nova_sanctum"
+    mode_of_operation: "standby"
 
     
+    co2_threshold: 500.0
+    moisture_threshold: 70.0
+    contaminants_threshold: 30.0
+
+    
+    temp_kp: 0.1
+    temp_ki: 0.01
+    temp_kd: 0.005
+    press_kp: 0.1
+    press_ki: 0.01
+    press_kd: 0.005
+
+
+/desiccant_server:
+  ros__parameters:
+    moisture_removal_rate: 0.95
+    contaminant_removal_rate: 0.90
+    emergency_threshold: 5.0
+
+
+/adsorbent_bed:
+  ros__parameters:
+    co2_removal_efficiency: 0.95
+    co2_to_space_ratio: 0.40
+    desired_temperature: 420.0
+    temperature_tolerance: 30.0
+    kp: 0.6
+    kd: 0.15

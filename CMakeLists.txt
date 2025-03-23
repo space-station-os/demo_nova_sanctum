@@ -12,6 +12,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(actionlib_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -19,6 +21,9 @@ find_package(actionlib_msgs REQUIRED)
 set(msg_files
   
   "src/ars_systems/msg/AirData.msg"
+  "src/ars_systems/srv/CrewQuarters.srv"
+
+  
   "src/ors_systems/msg/Sabatier.msg"
   "src/ors_systems/msg/Water.msg"
   "src/ors_systems/msg/Electrolysis.msg"
@@ -31,13 +36,14 @@ set(msg_files
   "src/wrs_systems/srv/CleanWater.srv"
   "src/wrs_systems/msg/WaterCrew.msg"
  
-
+  # CDRA SAFETY
+  "src/ars_systems/msg/CdraStatus.msg"
 
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files} 
-  DEPENDENCIES  std_msgs sensor_msgs 
+  DEPENDENCIES  std_msgs sensor_msgs visualization_msgs
 )
 
   
@@ -122,6 +128,15 @@ rosidl_target_interfaces(ultrasound ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
 
+# CDRA SAFETY
+
+add_executable(system_safety src/system_verification.cpp)
+ament_target_dependencies(system_safety std_srvs rosidl_default_generators rclcpp visualization_msgs)
+
+rosidl_target_interfaces(system_safety ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+
+
 install(TARGETS
   collector
   desiccant
@@ -138,6 +153,9 @@ install(TARGETS
   ionizaton
   clean_water_tank
   ultrasound
+
+
+  system_safety
   
   DESTINATION lib/${PROJECT_NAME})
 

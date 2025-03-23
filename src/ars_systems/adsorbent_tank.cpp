@@ -1,123 +1,229 @@
-#include "demo_nova_sanctum/adsorbent_tank.h"
-#include <mutex> // For thread-safety
+#include "demo_nova_sanctum/ars_system/adsorbent_tank.hpp"
+#include <mutex>
+
+using namespace std::chrono_literals;
 
 AdsorbentBed::AdsorbentBed()
-: Node("adsorbent_bed"),
-  co2_removal_efficiency_(this->declare_parameter<double>("co2_removal_efficiency", 0.90)), // 90% removal
-  co2_to_space_ratio_(this->declare_parameter<double>("co2_to_space_ratio", 0.50)), // 50% sent to space
-  is_active_(false) {
+: Node("adsorbent_bed"), is_active_(false), previous_error_(0.0), retained_co2_cumulative_(0.0), co2_buffer_(0.0) {
 
-  // Subscriber to the /removed_moisture topic
-  air_data_subscriber_ = this->create_subscription<demo_nova_sanctum::msg::AirData>(
-    "/removed_moisture", 10, std::bind(&AdsorbentBed::air_data_callback, this, std::placeholders::_1));
+  RCLCPP_INFO(this->get_logger(), "Initializing Adsorbent Bed...");
 
-  // Publisher for the /processed_co2 topic
-  processed_co2_publisher_ = this->create_publisher<demo_nova_sanctum::msg::AirData>("/processed_co2", 10);
+  // Declare dynamic parameters (can be modified via YAML)
+  this->declare_parameter("co2_removal_efficiency", 0.90);
+  this->declare_parameter("co2_to_space_ratio", 0.50);
+  this->declare_parameter("desired_temperature", 430.0);
+  this->declare_parameter("temperature_tolerance", 50.0);
+  this->declare_parameter("desorption_temperature", 400.0);
+  this->declare_parameter("kp", 0.5);
+  this->declare_parameter("kd", 0.1);
 
-  // Service to handle trigger requests
-  trigger_server_ = this->create_service<std_srvs::srv::Trigger>(
-    "/adsorbent_server", std::bind(&AdsorbentBed::trigger_callback, this,
-                                   std::placeholders::_1, std::placeholders::_2));
+  // Create the service to receive air from the Desiccant Bed
+  adsorbent_service_ = this->create_service<demo_nova_sanctum::srv::CrewQuarters>(
+    "/adsorbent_server", 
+    std::bind(&AdsorbentBed::handle_air_processing_request, this, std::placeholders::_1, std::placeholders::_2));
 
+  // Create a client to send processed air back to the Desiccant Bed
+  desiccant_client_ = this->create_client<demo_nova_sanctum::srv::CrewQuarters>("/desiccant_bed2");
 
-
+  // Publisher for CO₂ desorption (venting)
+  co2_publisher_ = this->create_publisher<std_msgs::msg::Float64>("/co2_vent", 10);
   
+  cdra_status_publisher_=this->create_publisher<demo_nova_sanctum::msg::CdraStatus>("/cdra_status", 10);
+  cdra=demo_nova_sanctum::msg::CdraStatus();
+
+
+  RCLCPP_INFO(this->get_logger(), "Adsorbent Bed successfully initialized.");
+  RCLCPP_INFO(this->get_logger(),"==============================================");
 }
 
-void AdsorbentBed::air_data_callback(const demo_nova_sanctum::msg::AirData::SharedPtr msg) {
-  
-  co2_ = msg->co2_mass;
-  moisture_content_ = msg->moisture_content;
-  contaminants_ = msg->contaminants;
-  temperature_ = msg->temperature;
-  dew_point_ = msg->dew_point;
+void AdsorbentBed::handle_air_processing_request(
+    const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response) {
 
-  // RCLCPP_INFO(this->get_logger(), "Received air data: CO2: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
-  //             co2_, moisture_content_, contaminants_);
+    if (is_active_) {
+        response->success = false;
+        response->message = "Adsorbent Bed is already processing a batch.";
+        RCLCPP_WARN(this->get_logger(), "New air request rejected. Still processing previous batch.");
+        return;
+    }
+
+    cdra.co2_processing_state = 3;
+    cdra.system_health = 1;
+    cdra.data = "Adsorbing process started";
+    cdra_status_publisher_->publish(cdra);
+    // Retrieve parameters dynamically from YAML
+    this->get_parameter("co2_removal_efficiency", co2_removal_efficiency_);
+    this->get_parameter("co2_to_space_ratio", co2_to_space_ratio_);
+
+    // Accept air for processing
+    is_active_ = true;
+    co2_ = request->co2_mass;
+    moisture_content_ = request->moisture_content;
+    contaminants_ = request->contaminants;
+
+    RCLCPP_INFO(this->get_logger(), "Received air batch from Desiccant Bed: CO₂=%.2f g, Moisture=%.2f %%, Contaminants=%.2f %%",
+                co2_, moisture_content_, contaminants_);
+    RCLCPP_INFO(this->get_logger(),"==============================================");
+    // Start processing cycle
+    timer_ = this->create_wall_timer(1s, std::bind(&AdsorbentBed::process_co2, this));
+
+    response->success = true;
+    response->message = "Adsorbent Bed started processing the new batch.";
 }
 
 void AdsorbentBed::process_co2() {
   std::lock_guard<std::mutex> lock(data_mutex_);
 
+  // Retrieve PID parameters dynamically
+  double desired_temperature, temperature_tolerance, kp, kd;
+  this->get_parameter("desired_temperature", desired_temperature);
+  this->get_parameter("temperature_tolerance", temperature_tolerance);
+  this->get_parameter("kp", kp);
+  this->get_parameter("kd", kd);
 
-  // Parameters for PD controller
-  double desired_temperature = 430.0; 
-  double kp = 0.5;  
-  double kd = 0.1;  
-
-  
+  // **Temperature Regulation using PD Control**
   double error = desired_temperature - temperature_;
   double derivative = error - previous_error_;
   double adjustment = (kp * error) + (kd * derivative);
 
-  
   temperature_ += adjustment;
   previous_error_ = error;
-  
-  // temperature_=temperature_+50.0;
 
-  RCLCPP_INFO(this->get_logger(),"Adsorbent bed temperature increased to %.2f degrees Celsius.", temperature_);
-  // Prepare the processed CO2 message
-  if (temperature_<450.0 && temperature_>400.0){
+  RCLCPP_INFO(this->get_logger(), "Adsorbent bed temperature adjusted to %.2f°C.", temperature_);
+  RCLCPP_INFO(this->get_logger(),"==============================================");
 
-      // Gradual CO2 reduction (10% per step)
-    double co2_decrement = co2_ * co2_removal_efficiency_ * 0.1; // 10% of total CO2 removal efficiency
-    double co2_to_space = co2_decrement * co2_to_space_ratio_;  // Part of CO2 sent to space
-    double co2_retained = co2_decrement - co2_to_space;         // Part of CO2 retained for Sabatier
-
-    // Update remaining CO2
-    co2_ -= co2_decrement;
-    if (co2_ < 0.0) {
-      co2_ = 0.0; // Ensure no negative CO2 values
-    }
-
-    // Accumulate retained CO2 for Sabatier
-    retained_co2_cumulative_ += co2_retained;
-    demo_nova_sanctum::msg::AirData processed_msg;
-
-    processed_msg.header.stamp = this->get_clock()->now();
-    processed_msg.header.frame_id = "Adsorbent Bed";
-    processed_msg.co2_mass = retained_co2_cumulative_; // Publish cumulative retained CO2
-    processed_msg.moisture_content = moisture_content_;       
-    processed_msg.contaminants = contaminants_;           
-    processed_msg.temperature = temperature_;            
-    processed_msg.dew_point = dew_point_;              
-
-    RCLCPP_INFO(this->get_logger(),
-                "Processed CO2: %.2f g retained (cumulative: %.2f g), %.2f g sent to space. Remaining CO2: %.2f g",
-                co2_retained, retained_co2_cumulative_, co2_to_space, co2_);
-
-    // Publish the retained CO2 (cumulative) for Sabatier
-    processed_co2_publisher_->publish(processed_msg);
-  }
-  else if (temperature_>=450.0){
-    RCLCPP_WARN(this->get_logger(),"Adsorbent bed temperature exceeded 450 degrees Celsius. Shutting down the system.");
-    is_active_=false;
+  // **Wait until the bed reaches the required temperature before starting CO₂ adsorption**
+  if (temperature_ < (desired_temperature - temperature_tolerance)) {
+      RCLCPP_WARN(this->get_logger(), "Temperature (%.2f°C) too low for adsorption. Waiting...", temperature_);
+      return;  // Do not proceed with adsorption yet
   }
 
-  // Stop processing if all CO2 has been removed
-  if (co2_ <= 0.0) {
-    RCLCPP_INFO(this->get_logger(), "All CO2 has been processed. Total retained CO2: %.2f g.", retained_co2_cumulative_);
-    is_active_=false; // Stop the timer
+  // **Start CO₂ Adsorption Once Temperature is in Range**
+  if (temperature_ >= (desired_temperature - temperature_tolerance) &&
+      temperature_ <= (desired_temperature + temperature_tolerance)) {
+
+      double co2_decrement = co2_ * co2_removal_efficiency_ * 0.1;
+      double co2_retained = co2_decrement;
+
+      co2_ -= co2_decrement;
+      if (co2_ < 1.0) co2_ = 0.0;
+
+      co2_buffer_ += co2_retained;  // Store CO₂ in the buffer
+
+      RCLCPP_INFO(this->get_logger(),
+                  "CO₂ stored in buffer: %.2f g. Remaining CO₂ in air: %.2f g",
+                  co2_buffer_, co2_);
+      RCLCPP_INFO(this->get_logger(),"==============================================");
+  }
+
+  // **Once CO₂ is fully adsorbed, accept new air again**
+  if (co2_ <= 3.0) {
+      RCLCPP_INFO(this->get_logger(), "All CO₂ has been adsorbed. Ready to accept new air.");
+      is_active_ = false;  // Mark AdsorbentBed as available for new air
+      send_processed_air();  // Send processed air back to Desiccant Bed 2
+
+      cdra.co2_processing_state = 5;
+      cdra.system_health = 1;
+      cdra.data = "Transferring for desorption";
+      cdra_status_publisher_->publish(cdra);
   }
 }
 
 
 
-void AdsorbentBed::trigger_callback(const std_srvs::srv::Trigger::Request::SharedPtr request,
-                                    std_srvs::srv::Trigger::Response::SharedPtr response) {
-  if (!is_active_) {
-    is_active_ = true;
-    response->success = true;
-    response->message = "Adsorbent bed activated successfully.";
-    RCLCPP_INFO(this->get_logger(), "Adsorbent bed activated.");
-
-    timer_ = this->create_wall_timer(1s, std::bind(&AdsorbentBed::process_co2, this));
-  } else {
-    response->success = false;
-    response->message = "Adsorbent bed is already active.";
-    RCLCPP_WARN(this->get_logger(), "Adsorbent bed is already active.");
+void AdsorbentBed::send_processed_air() {
+  if (!desiccant_client_->wait_for_service(3s)) {
+      RCLCPP_WARN(this->get_logger(), "Desiccant Bed service unavailable. Holding air...");
+      return;
   }
+
+  auto request = std::make_shared<demo_nova_sanctum::srv::CrewQuarters::Request>();
+  request->co2_mass = 0.0;  // CO₂ is adsorbed, air should be clean
+  request->moisture_content = moisture_content_;  // Maintain moisture balance
+  request->contaminants = contaminants_;  // Maintain contaminant level
+
+  RCLCPP_INFO(this->get_logger(), "Sending processed air (CO₂-free) to Desiccant Bed 2...");
+  auto future = desiccant_client_->async_send_request(request,
+      [this](rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedFuture future) {
+          auto response = future.get();
+          if (response->success) {
+              RCLCPP_INFO(this->get_logger(), "Processed air successfully returned to Desiccant Bed 2");
+              
+              // **Reset System for Next Cycle**
+              is_active_ = false; 
+              retained_co2_cumulative_ = 0.0;
+              co2_buffer_ = 0.0;
+              
+              cdra.co2_processing_state = 5;
+              cdra.system_health = 1;
+              cdra.data = "Sending for humidification";
+              cdra_status_publisher_->publish(cdra);
+              // **Start desorption cycle for CO₂ venting**
+              start_desorption_cycle();
+          } else {
+              RCLCPP_ERROR(this->get_logger(), "Failed to send processed air to Desiccant Bed 2  Retrying...");
+              rclcpp::sleep_for(500ms);
+              send_processed_air();  // Retry sending air
+          }
+      }
+  );
+}
+
+
+// **Begin CO₂ Desorption**
+void AdsorbentBed::start_desorption_cycle() {
+
+
+  cdra.co2_processing_state = 6;
+  cdra.system_health = 1;
+  cdra.data = "Starting Desorption";
+  cdra_status_publisher_->publish(cdra);
+
+  RCLCPP_INFO(this->get_logger(), "Starting CO₂ desorption cycle. Heating to 400°F...");
+  RCLCPP_INFO(this->get_logger(),"==============================================");
+  timer_ = this->create_wall_timer(1s, std::bind(&AdsorbentBed::desorb_co2, this));
+}
+
+void AdsorbentBed::desorb_co2() {
+  std::lock_guard<std::mutex> lock(data_mutex_);
+
+  double desorption_temperature;
+  this->get_parameter("desorption_temperature", desorption_temperature);
+
+  // Increase temperature gradually until it reaches desorption temp
+  if (temperature_ < desorption_temperature) {
+      temperature_ += 5.0;
+      RCLCPP_INFO(this->get_logger(), "Heating to Desorption Temp: %.2f°F", temperature_);
+      RCLCPP_INFO(this->get_logger(),"==============================================");
+      return;
+  }
+
+  if (co2_buffer_ <= 0.0) {
+      RCLCPP_WARN(this->get_logger(), "No CO₂ stored for venting. Skipping venting cycle.");
+      cdra.co2_processing_state = 7;
+      cdra.system_health = 2;
+      cdra.data = "Desorption failed: No CO2 available";
+      cdra_status_publisher_->publish(cdra);
+
+      return;
+  }
+
+ 
+  std_msgs::msg::Float64 co2_msg;
+  co2_msg.data = co2_buffer_; 
+  co2_publisher_->publish(co2_msg);
+
+
+  cdra.co2_processing_state = 7;
+  cdra.system_health = 1;
+  cdra.data = "CO2 vented";
+  cdra_status_publisher_->publish(cdra);
+  RCLCPP_INFO(this->get_logger(), "CO₂ vented: %.2f g", co2_buffer_);
+  RCLCPP_INFO(this->get_logger(),"==============================================");
+
+
+  co2_buffer_ = 0.0;
+  is_active_ = false;
 }
 
 int main(int argc, char **argv) {

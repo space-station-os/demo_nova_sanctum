@@ -1,118 +1,248 @@
-#include "demo_nova_sanctum/air_collector_tank.h"
-#include <chrono>
+#include "demo_nova_sanctum/ars_system/air_collector_tank.hpp"
 #include <cmath>
 
 using namespace std::chrono_literals;
 
-AirPublisher::AirPublisher()
-: Node("air_publisher"),
-  flow_rate_(this->declare_parameter<double>("flow_rate", 28.0)),
-  co2_intake_(this->declare_parameter<double>("co2_intake", 1.04)),
-  crew_onboard_(this->declare_parameter<int>("crew_onboard", 4)),
-  cabin_pressure_(this->declare_parameter<double>("cabin_pressure", 14.7)),
-  temperature_cutoff_(this->declare_parameter<double>("temperature_cutoff", 450.0)),
-  max_crew_limit_(this->declare_parameter<int>("max_crew_limit", 6)),
-  power_consumption_(this->declare_parameter<double>("power_consumption", 1.0)),
-  system_name_(this->declare_parameter<std::string>("system_name", "demo_nova_sanctum")),
-  mode_of_operation_(this->declare_parameter<std::string>("mode_of_operation", "standby")),
-  tank_capacity_(this->declare_parameter<double>("tank_capacity", 1000.0)) { 
+AirCollector::AirCollector()
+    : Node("air_collector"), previous_mode_("idle"), service_unavailable_count_(0)  // Initialize previous_mode_
+{
+  RCLCPP_INFO(this->get_logger(), "Initializing Air Collector System...");
 
-  // Air mixture parameters
-  co2_mass_ = 0.0;
-  moisture_content_ = 0.0;
-  contaminants_ = 0.0;
-  dew_point_ = 10.0; 
-  total_air_mass_ = 0.0;
+  // Load parameters dynamically
+  this->declare_parameter("crew_onboard", 4);
+  this->declare_parameter("cabin_pressure", 14.7);
+  this->declare_parameter("temperature_cutoff", 450.0);
+  this->declare_parameter("max_crew_limit", 6);
+  this->declare_parameter("power_consumption", 1.0);
+  this->declare_parameter("tank_capacity", 1000.0);
+  this->declare_parameter("system_name", "demo_nova_sanctum");
+  this->declare_parameter("mode_of_operation", "idle");  
 
-  // ROS publishers and clients
-  unpure_air_publisher_ = this->create_publisher<demo_nova_sanctum::msg::AirData>("/unpure_air", 10);
-  desiccant_server_client_ = this->create_client<std_srvs::srv::Trigger>("/desiccant_server");
-  
+  this->declare_parameter("co2_threshold", 500.0);
+  this->declare_parameter("moisture_threshold", 70.0);
+  this->declare_parameter("contaminants_threshold", 30.0);
 
-  // ROS timer
-  timer_ = this->create_wall_timer(1s, std::bind(&AirPublisher::timer_callback, this));
+  this->declare_parameter("temp_kp", 0.1);
+  this->declare_parameter("temp_ki", 0.01);
+  this->declare_parameter("temp_kd", 0.005);
+  this->declare_parameter("press_kp", 0.1);
+  this->declare_parameter("press_ki", 0.01);
+  this->declare_parameter("press_kd", 0.005);
+
+  this->declare_parameter("C_activity", 1.04);  
+
+  temperature_publisher_ = this->create_publisher<sensor_msgs::msg::Temperature>("/temperature", 10);
+  pressure_publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>("/pipe_pressure", 10);
+  desiccant_bed_client_ = this->create_client<demo_nova_sanctum::srv::CrewQuarters>("/crew_co2_service");
+
+  timer_ = this->create_wall_timer(1s, std::bind(&AirCollector::timer_callback, this));
+
+
+  cdra_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::CdraStatus>("/cdra_status", 10);
+  cdra=demo_nova_sanctum::msg::CdraStatus();  
+  RCLCPP_INFO(this->get_logger(), "Air Collector System successfully initialized.");
 }
 
-void AirPublisher::timer_callback() {
-  double k = cabin_pressure_ / temperature_cutoff_;
-  double h_ratio = 0.05; 
-  double c_ratio = 0.02; 
+void AirCollector::timer_callback()
+{
+  this->get_parameter("crew_onboard", crew_onboard_);
+  this->get_parameter("cabin_pressure", cabin_pressure_);
+  this->get_parameter("temperature_cutoff", temperature_cutoff_);
+  this->get_parameter("power_consumption", power_consumption_);
+  this->get_parameter("tank_capacity", tank_capacity_);
 
-  // Update temperature cutoff for simulation purposes
-  temperature_cutoff_ = 30.0;
+  this->get_parameter("co2_threshold", co2_threshold_);
+  this->get_parameter("moisture_threshold", moisture_threshold_);
+  this->get_parameter("contaminants_threshold", contaminants_threshold_);
+  this->get_parameter("mode_of_operation", mode_of_operation_);
 
-  // Calculate CO2 mass increment
-  co2_mass_ += flow_rate_ * co2_intake_ * crew_onboard_ * k;
+  double delta_t = 1.0;  
 
-  // Calculate moisture increment
-  moisture_content_ += flow_rate_ * h_ratio * crew_onboard_;
+  double C_activity;
+  this->get_parameter("C_activity", C_activity);
+  simulate_temperature_pressure();
+  if (mode_of_operation_ == "idle") {
+      C_activity = 0.8;
+  } else if (mode_of_operation_ == "exercise") {
+      C_activity = 2.5;
+  } else if (mode_of_operation_ == "emergency") {
+      C_activity = 3.0;
+  } else if (mode_of_operation_ == "biological_research") {
+      C_activity = 1.2;
+  } else if (mode_of_operation_ == "eva_repair") {
+      C_activity = 2.8;
+  }
+  cdra.co2_processing_state = 0;
+  cdra.system_health = 1;
+  cdra.data="IDLE";
+  cdra_status_publisher_->publish(cdra);
+  if (mode_of_operation_ != previous_mode_) {
+      RCLCPP_INFO(this->get_logger(), "[Mode Change] %s -> %s | Adjusted CO₂ Activity Rate: %.2f g/min per astronaut", 
+                  previous_mode_.c_str(), mode_of_operation_.c_str(), C_activity);
+      previous_mode_ = mode_of_operation_; 
+  }
 
-  // Calculate contaminants increment
-  contaminants_ += flow_rate_ * c_ratio * crew_onboard_;
+  double delta_co2 = (crew_onboard_ * C_activity * (cabin_pressure_ / 14.7) * (temperature_cutoff_ / 450.0)) * delta_t;
+  co2_mass_ += delta_co2;
 
-  // Update dew point based on temperature and moisture content
-  dew_point_ = 10.0 + 0.1 * moisture_content_;
+  double moisture_factor = (mode_of_operation_ == "exercise") ? 1.5 :
+                           (mode_of_operation_ == "emergency") ? 2.0 :
+                           (mode_of_operation_ == "biological_research") ? 0.7 :
+                           (mode_of_operation_ == "eva_repair") ? 0.2 : 0.5;
 
-  // Calculate total air mass
-  total_air_mass_ = co2_mass_ + moisture_content_ + contaminants_;
+  double delta_moisture = (crew_onboard_ * moisture_factor + (temperature_cutoff_ / 450.0) * 2.5) * delta_t;
+  moisture_content_ += delta_moisture;
 
-  // Create and publish the air data message
-  auto message = demo_nova_sanctum::msg::AirData();
-  message.header.stamp = this->get_clock()->now();
-  message.header.frame_id = "air_collector_tank";
+  double contaminants_factor = (mode_of_operation_ == "exercise") ? 0.5 :
+                               (mode_of_operation_ == "emergency") ? 0.7 :
+                               (mode_of_operation_ == "biological_research") ? 0.4 :
+                               (mode_of_operation_ == "eva_repair") ? 0.8 : 0.3;
 
-  message.co2_mass = co2_mass_;
-  message.moisture_content = moisture_content_;
-  message.contaminants = contaminants_;
-  message.temperature = temperature_cutoff_;
-  message.dew_point = dew_point_;
+  double delta_contaminants = (crew_onboard_ * contaminants_factor - 0.1 * power_consumption_) * delta_t;
+  contaminants_ += delta_contaminants;
 
-  RCLCPP_INFO(this->get_logger(), "Publishing air data: CO2: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
+  RCLCPP_INFO(this->get_logger(), "CO₂ Mass: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
               co2_mass_, moisture_content_, contaminants_);
-
-  unpure_air_publisher_->publish(message);
-
- 
-  if (total_air_mass_ >= tank_capacity_) {
-    RCLCPP_WARN(this->get_logger(), "Tank capacity reached! Triggering servers and opening valve...");
-    trigger_server("/desiccant_server", desiccant_server_client_);
-    // trigger_server("/adsorbent_server", adsorbent_server_client_);
-    open_valve();
-    RCLCPP_INFO(this->get_logger(), "Air released successfully.and tank capacity now = ", total_air_mass_);
-  }
-}
-
-void AirPublisher::trigger_server(const std::string &server_name,
-                                  const rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr &client) {
-  if (!client->wait_for_service(5s)) {
-    RCLCPP_ERROR(this->get_logger(), "Service %s is not available!", server_name.c_str());
-    return;
-  }
-
-  auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-  auto future = client->async_send_request(request);
-
-  try {
-    auto response = future.get();
-    if (response->success) {
-      RCLCPP_INFO(this->get_logger(), "Triggered server %s successfully.", server_name.c_str());
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "Failed to trigger server %s: %s", server_name.c_str(), response->message.c_str());
+  RCLCPP_INFO(this->get_logger(),"==============================================");
+  cdra.co2_processing_state = 1;
+  cdra.system_health = 1;
+  cdra.data="AIR_COLLECTION";
+  cdra_status_publisher_->publish(cdra);
+  if (co2_mass_ > co2_threshold_ || moisture_content_ > moisture_threshold_ || contaminants_ > contaminants_threshold_) 
+  {
+    if (!desiccant_bed_client_->wait_for_service(3s))  
+    {
+      service_unavailable_count_++;
+      RCLCPP_WARN(this->get_logger(), "Desiccant Bed Service unavailable. Holding air... (%d attempts)", service_unavailable_count_);
+      
+      if (service_unavailable_count_ >= 5)  
+      {
+        cdra.co2_processing_state = 1;
+        cdra.system_health = 2;
+        cdra.data="FAILURE";
+        cdra_status_publisher_->publish(cdra);
+        RCLCPP_ERROR(this->get_logger(), "EMERGENCY: Desiccant Bed Service unavailable for too long! Immediate action required!");
+      }
+    } 
+    else 
+    {
+      service_unavailable_count_ = 0;  
+      send_air_to_desiccant_bed();
     }
-  } catch (const std::exception &e) {
-    RCLCPP_ERROR(this->get_logger(), "Exception while calling service %s: %s", server_name.c_str(), e.what());
   }
 }
 
-void AirPublisher::open_valve() {
-  RCLCPP_INFO(this->get_logger(), "Opening the valve to release air...");
-  // Simulate valve opening
-  total_air_mass_ = 0.0; // Reset the total air mass after releasing air
+void AirCollector::send_air_to_desiccant_bed() {
+  if (!desiccant_bed_client_->wait_for_service(5s)) {
+      RCLCPP_ERROR(this->get_logger(), "Desiccant Bed service is not available!");
+      return;
+  }
+
+  cdra.co2_processing_state = 2;
+  cdra.system_health = 1;
+  cdra.data = "SENDING_TO_DESICCANT";
+  cdra_status_publisher_->publish(cdra);
+  auto request = std::make_shared<demo_nova_sanctum::srv::CrewQuarters::Request>();
+  request->co2_mass = co2_mass_;
+  request->moisture_content = moisture_content_;
+  request->contaminants = contaminants_;
+
+  RCLCPP_INFO(this->get_logger(), "Requesting Desiccant Bed to process air batch...");
+  RCLCPP_INFO(this->get_logger(),"==============================================");
+ 
+  auto future = desiccant_bed_client_->async_send_request(request,
+    std::bind(&AirCollector::process_desiccant_response, this, std::placeholders::_1));
 }
 
-int main(int argc, char **argv) {
+void AirCollector::process_desiccant_response(rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedFuture future) {
+  try {
+      auto response = future.get();
+      if (response->success) {
+          RCLCPP_INFO(this->get_logger(), "Desiccant Bed accepted air for processing. Opening valve...");
+          
+          co2_mass_ = 0.0;
+          moisture_content_ = 0.0;
+          contaminants_ = 0.0;
+
+          cdra.co2_processing_state = 2;
+          cdra.system_health = 1;
+          cdra.data = "DESICCANT_PROCESSING";
+          cdra_status_publisher_->publish(cdra);
+
+
+          RCLCPP_INFO(this->get_logger(), "Air Collector reset. Continuing collection...");
+      } else {
+          RCLCPP_WARN(this->get_logger(), "Desiccant Bed is still processing. Holding air...");
+      }
+  } catch (const std::exception &e) {
+      RCLCPP_ERROR(this->get_logger(), "Exception while calling Desiccant Bed: %s", e.what());
+  }
+}
+
+
+void AirCollector::simulate_temperature_pressure() {
+  // Retrieve PID parameters dynamically
+  double temp_kp, temp_ki, temp_kd, press_kp, press_ki, press_kd;
+  this->get_parameter("temp_kp", temp_kp);
+  this->get_parameter("temp_ki", temp_ki);
+  this->get_parameter("temp_kd", temp_kd);
+  this->get_parameter("press_kp", press_kp);
+  this->get_parameter("press_ki", press_ki);
+  this->get_parameter("press_kd", press_kd);
+  
+  double desired_temperature = 70.0;  // **Target temp set to 70°C**
+  double desired_pressure = cabin_pressure_;  // **Maintain cabin pressure**
+
+  // **PD control logic for temperature adjustment**
+  double temp_error = desired_temperature - current_temperature_;
+  double temp_derivative = temp_error - prev_temp_error_;
+  double temp_adjustment = (temp_kp * temp_error) + (temp_kd * temp_derivative);
+  prev_temp_error_ = temp_error;
+
+  // **Limit the temperature increase to prevent excessive oscillation**
+  if (std::abs(temp_error) > 1.0) {  // Only adjust if deviation is significant
+    current_temperature_ += temp_adjustment;
+  }
+
+  // **Prevent overshoot**
+  if (current_temperature_ > desired_temperature + 1.0) {
+    current_temperature_ = desired_temperature + 1.0;
+  } else if (current_temperature_ < desired_temperature - 1.0) {
+    current_temperature_ = desired_temperature - 1.0;
+  }
+
+  // **PD control logic for pressure adjustment**
+  double press_error = desired_pressure - current_pressure_;
+  double press_derivative = press_error - prev_press_error_;
+  double press_adjustment = (press_kp * press_error) + (press_kd * press_derivative);
+  prev_press_error_ = press_error;
+
+  current_pressure_ += press_adjustment;
+
+  // **Publish Temperature**
+  sensor_msgs::msg::Temperature temp_msg;
+  temp_msg.temperature = current_temperature_;
+  temp_msg.variance = 0.5;  // Simulated variance
+  temperature_publisher_->publish(temp_msg);
+
+  // **Publish Pressure**
+  sensor_msgs::msg::FluidPressure press_msg;
+  press_msg.fluid_pressure = current_pressure_;
+  press_msg.variance = 0.1;
+  pressure_publisher_->publish(press_msg);
+
+  // **Log Temperature and Pressure**
+  RCLCPP_INFO(this->get_logger(), "Simulated Temperature: %.2f°C (Target: 70°C), Pressure: %.2f psi", 
+              current_temperature_, current_pressure_);
+}
+
+
+
+int main(int argc, char **argv)
+{
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<AirPublisher>());
+  auto node = std::make_shared<AirCollector>();
+  rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;
 }

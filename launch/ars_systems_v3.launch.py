@@ -25,6 +25,7 @@ def generate_launch_description():
             executable='desiccant',
             name='desiccant_bed',
             output='screen',
+            parameters=[params_file],
             emulate_tty=True
         ),
         
@@ -33,6 +34,7 @@ def generate_launch_description():
             executable='adsorbent',
             name='adsorbent_bed',
             output='screen',
+            parameters=[params_file],
             emulate_tty=True
         ),
     ])

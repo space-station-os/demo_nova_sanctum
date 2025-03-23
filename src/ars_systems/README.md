@@ -1,123 +1,162 @@
 # ENVIRONMENTAL CONTROL AND LIFE SUPPORT SYSTEM
 
 
-## Air Revitalization System (ARS) Module - Version 2
+# README - ROS2 ARS System
 
-### Project Overview
-In this version, we introduce a comprehensive system for air quality management onboard the ISS, focusing on the collection, processing, and reduction of moisture, contaminants, and CO2. This system consists of three interconnected nodes, each handling specific tasks to optimize air processing using advanced desiccant and adsorbent technologies. The following sections explain the functionalities of each component in detail.
+## Overview
+The **ARS System** (Air Revitalization System) is a ROS2-based implementation for air collection, moisture removal, and CO₂ adsorption in a closed-loop environment. This system simulates an advanced life support system similar to those used in space habitats, ensuring air quality is maintained through multiple processing stages.
 
----
+## System Components
+The system consists of three main nodes:
+1. **Air Collector Node** - Gathers and conditions the cabin air.
+2. **Desiccant Server Node** - Removes moisture and contaminants.
+3. **Adsorbent Bed Node** - Adsorbs and vents CO₂ to maintain breathable air.
 
-### System Components
-
-### 1. Air Collection and Publishing Node
-
-#### Purpose
-This node simulates the collection of unprocessed air onboard the ISS, which contains moisture, CO2, and various contaminants. The air is continuously published on the `/unpure_air` topic, providing real-time data for downstream processing. This node also manages the entire system by triggering the reduction of CO2 using desiccant and adsorbent technologies.
-
-#### Functionality
-- **Publishes Custom Message**: A custom message `AirData.msg` encapsulates the following properties of the air:
-  - **CO2 Content**: The amount of carbon dioxide in grams.
-  - **Moisture**: Percentage of moisture in the air.
-  - **Contaminants**: Percentage of contaminants in the air.
-  - **Flow Rate**: Standard cubic feet per minute (SCFM).
-  - **Temperature**: Cabin temperature in degrees Celsius.
-  - **Pressure**: Cabin pressure in mmHg.
-- **Topic**: Publishes this data on the `/unpure_air` topic.
-- **Control Role**: Acts as a controller node by triggering two servers:
-  - **Desiccant Bed Server**: Handles moisture and contaminant reduction.
-  - **Adsorbent Bed Server**: Handles CO2 reduction.
+Each node operates independently but communicates through **ROS2 services, publishers, and subscribers** to form a complete air revitalization process.
 
 ---
 
-### 2. Desiccant Bed Node
+## Installation & Setup
+### 1. Prerequisites
+Ensure you have **ROS2 Humble or later** installed on your system.
+```bash
+source /opt/ros/humble/setup.bash
+```
 
-#### Purpose
-This node acts as a server that reduces moisture and contaminants from the air received from the `/unpure_air` topic. It ensures that only the CO2 content is retained for further processing while publishing the processed data.
+### 2. Clone the Repository
+```bash
+mkdir -p ros2_ws/src
+cd ros2_ws/src
+git clone https://github.com/space-station-os/demo_nova_sanctum.git
+cd ..
+colcon build --symlink-install --packages-select demo_nova_sanctum
+```
 
-#### Functionality
-- **Subscriber**: Subscribes to the `/unpure_air` topic and processes the incoming air data.
-- **Reduction**:
-  - **Moisture Content**: Reduced based on the desiccant bed's efficiency rate (e.g., 95% removal).
-  - **Contaminants**: Reduced based on the removal efficiency (e.g., 90% removal).
-- **Publisher**: Publishes the processed air data (retaining only CO2 content) on the `/removed_moisture` topic.
-- **Server Role**: Operates as a server that can be triggered by the Air Collection Node for activation and deactivation.
+### 3. Source the Workspace
+```bash
+source install/setup.bash
+```
 
----
-
-### 3. Adsorbent Bed Node
-
-#### Purpose
-This node processes the reduced air from the desiccant node and performs CO2 reduction in two ways:
-1. Sending a portion of the CO2 to space.
-2. Retaining a portion of the CO2 for further reactions with hydrogen to generate methane and water.
-
-#### Functionality
-- **Subscriber**: Subscribes to the `/removed_moisture` topic to receive air data with reduced moisture and contaminants.
-- **CO2 Processing**:
-  - **Stream 1**: CO2 sent to space for removal.
-  - **Stream 2**: CO2 retained and published on the `/processed_co2` topic for use in the water recovery system.
-- **Server Role**: Operates as a server triggered by the Air Collection Node for activation and deactivation.
-
----
-
-## System Flow
-
-### Step 1: Air Collection
-- The Air Collection Node continuously gathers air data and publishes it to the `/unpure_air` topic.
-- Once the air data exceeds a defined threshold (e.g., tank capacity), the node triggers the desiccant and adsorbent servers for air processing.
-
-### Step 2: Moisture and Contaminant Reduction
-- The Desiccant Bed Node, upon activation, subscribes to the `/unpure_air` topic, processes the air to remove moisture and contaminants, and publishes the CO2 content on the `/removed_moisture` topic.
-
-### Step 3: CO2 Reduction
-- The Adsorbent Bed Node, upon activation, subscribes to the `/removed_moisture` topic, processes the CO2 content by splitting it into two streams, and publishes the retained CO2 on the `/processed_co2` topic for further utilization.
-
----
-
-## Custom Message Definition
-
-**File**: `msg/AirData.msg`
-```plaintext
-float64 co2_mass           # Mass of CO2 in grams
-float64 moisture_content   # Moisture content as a percentage
-float64 contaminants       # Contaminants as a percentage
-float64 flow_rate          # Flow rate in SCFM
-float64 temperature        # Temperature in Celsius
-float64 pressure           # Pressure in mmHg
+### 4. Launch the System
+Run each node in separate terminals:
+```bash
+ros2 run demo_nova_sanctum collector
+ros2 run demo_nova_sanctum desiccant
+ros2 run demo_nova_sanctum adsorbent
+```
+Or launch all nodes together:
+```bash
+ros2 launch demo_nova_sanctum ars_system_v3.launch.py
 ```
 
 ---
 
-## Services
+## Node Descriptions & Communication
+### **Air Collector Node** (`air_collector`)
+- Collects and monitors air in the environment.
+- Simulates CO₂ production, moisture, and contaminants accumulation.
+- Interfaces with the **Desiccant Server** for moisture removal and **Adsorbent Bed** for CO₂ processing.
 
-### Desiccant Server Service (`std_srvs/Trigger`)
-- **Purpose**: Activated by the Air Collection Node to reduce moisture and contaminants.
+**Communication Overview:**
+- **Publishes:**
+  - `/temperature` - Reports current temperature
+  - `/pipe_pressure` - Reports system pressure
+  - `/cdra_status` - Status of air processing
+- **Subscribes:**
+  - `/crew_co2_service` - Requests processing of accumulated CO₂ and contaminants
+- **Service Client:**
+  - `/crew_co2_service` - Calls Desiccant Server for air processing
 
-### Adsorbent Server Service (`std_srvs/Trigger`)
-- **Purpose**: Activated by the Air Collection Node to perform CO2 reduction.
+**Parameters:**
+```yaml
+crew_onboard: 4
+cabin_pressure: 14.7
+temperature_cutoff: 450.0
+max_crew_limit: 6
+power_consumption: 1.0
+tank_capacity: 1000.0
+system_name: "demo_nova_sanctum"
+mode_of_operation: "standby"
+co2_threshold: 500.0
+moisture_threshold: 70.0
+contaminants_threshold: 30.0
+temp_kp: 0.1
+temp_ki: 0.01
+temp_kd: 0.005
+press_kp: 0.1
+press_ki: 0.01
+press_kd: 0.005
+```
 
 ---
 
-## Benefits of Version 2
+### **Desiccant Server Node** (`desiccant_server`)
+- Removes moisture and contaminants from incoming air.
+- Ensures proper humidity levels before sending air to **Adsorbent Bed**.
+- Uses PID controllers for temperature and pressure regulation.
 
-1. **Optimized Resource Management**
-   - The system ensures efficient removal of unwanted air components while retaining valuable CO2 for further use.
+**Communication Overview:**
+- **Publishes:**
+  - `/cdra_status` - Publishes system health and status
+- **Subscribes:**
+  - `/temperature` - Reads temperature sensor data
+  - `/pipe_pressure` - Reads pressure sensor data
+- **Service Server:**
+  - `/crew_co2_service` - Handles air processing requests from the Air Collector Node
+- **Service Client:**
+  - `/adsorbent_server` - Requests CO₂ adsorption from the Adsorbent Bed
 
-2. **Modularity**
-   - Each node is independently responsible for a specific aspect of air processing, making the system scalable and maintainable.
-
-3. **Real-Time Processing**
-   - Air data is processed in real-time with precise control over the activation and deactivation of servers.
+**Parameters:**
+```yaml
+moisture_removal_rate: 0.95
+contaminant_removal_rate: 0.90
+emergency_threshold: 5.0
+target_temperature: 70.0
+target_pressure: 150000.0
+humidification_rate: 1.5
+```
 
 ---
 
-## References
+### **Adsorbent Bed Node** (`adsorbent_bed`)
+- Adsorbs CO₂ from the air, preventing dangerous buildup.
+- Uses PID control to regulate the adsorption process.
+- Handles CO₂ venting operations.
 
-For detailed information on sensors and bed performance, refer to:
-- **4BCO2.EDU.Performance_ICES-2021.pdf**
+**Communication Overview:**
+- **Publishes:**
+  - `/co2_vent` - Reports CO₂ venting status
+  - `/cdra_status` - System health and operational data
+- **Subscribes:**
+  - `/adsorbent_server` - Processes air from the desiccant bed
+- **Service Server:**
+  - `/adsorbent_server` - Handles air adsorption requests from the Desiccant Server
+- **Service Client:**
+  - `/desiccant_bed2` - Sends processed air back for humidification
+
+**Parameters:**
+```yaml
+co2_removal_efficiency: 0.95
+co2_to_space_ratio: 0.40
+desired_temperature: 420.0
+temperature_tolerance: 30.0
+kp: 0.6
+kd: 0.15
+```
 
 ---
 
-This documentation reflects the updated architecture and flow for **Version 2** of the ARS module simulation, ensuring engineers can understand, extend, and effectively use this system in their research and development.
+## System Flow
+1. **Air Collection:** The **Air Collector** gathers air, monitors CO₂ and humidity levels, and determines when processing is needed.
+2. **Moisture Removal:** The **Desiccant Server** removes excess moisture and contaminants, preparing air for adsorption.
+3. **CO₂ Adsorption:** The **Adsorbent Bed** captures CO₂, preventing buildup in the habitat.
+4. **CO₂ Venting:** Periodically, the **Adsorbent Bed** releases stored CO₂ into space.
+
+
+## Future Improvements
+- Add real-time monitoring via a ROS2 visualization tool.
+- Implement a machine learning model for predictive maintenance.
+
+---
+
 
