@@ -19,3 +19,5 @@ uint8 SYSTEM_HEALTH_FAILURE = 2
 uint8 co2_processing_state 
 uint8 system_health
 string data
+
+TransitionPair[] valid_transitions

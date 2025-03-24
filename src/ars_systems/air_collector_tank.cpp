@@ -4,7 +4,7 @@
 using namespace std::chrono_literals;
 
 AirCollector::AirCollector()
-    : Node("air_collector"), previous_mode_("idle"), service_unavailable_count_(0)  // Initialize previous_mode_
+    : Node("air_collector"), previous_mode_("idle"), service_unavailable_count_(0), state_(AirCollectorState::IDLE)  // Initialize state to IDLE
 {
   RCLCPP_INFO(this->get_logger(), "Initializing Air Collector System...");
 
@@ -18,7 +18,7 @@ AirCollector::AirCollector()
   this->declare_parameter("system_name", "demo_nova_sanctum");
   this->declare_parameter("mode_of_operation", "idle");  
 
-  this->declare_parameter("co2_threshold", 500.0);
+  this->declare_parameter("co2_threshold", 100.0);
   this->declare_parameter("moisture_threshold", 70.0);
   this->declare_parameter("contaminants_threshold", 30.0);
 
@@ -37,7 +37,6 @@ AirCollector::AirCollector()
 
   timer_ = this->create_wall_timer(1s, std::bind(&AirCollector::timer_callback, this));
 
-
   cdra_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::CdraStatus>("/cdra_status", 10);
   cdra=demo_nova_sanctum::msg::CdraStatus();  
   RCLCPP_INFO(this->get_logger(), "Air Collector System successfully initialized.");
@@ -45,22 +44,25 @@ AirCollector::AirCollector()
 
 void AirCollector::timer_callback()
 {
+  // Retrieve parameters dynamically
   this->get_parameter("crew_onboard", crew_onboard_);
   this->get_parameter("cabin_pressure", cabin_pressure_);
   this->get_parameter("temperature_cutoff", temperature_cutoff_);
   this->get_parameter("power_consumption", power_consumption_);
   this->get_parameter("tank_capacity", tank_capacity_);
-
   this->get_parameter("co2_threshold", co2_threshold_);
   this->get_parameter("moisture_threshold", moisture_threshold_);
   this->get_parameter("contaminants_threshold", contaminants_threshold_);
   this->get_parameter("mode_of_operation", mode_of_operation_);
 
   double delta_t = 1.0;  
-
   double C_activity;
   this->get_parameter("C_activity", C_activity);
+
+  // **Simulate Temperature & Pressure**
   simulate_temperature_pressure();
+
+  // **Adjust C_activity based on Mode of Operation**
   if (mode_of_operation_ == "idle") {
       C_activity = 0.8;
   } else if (mode_of_operation_ == "exercise") {
@@ -72,16 +74,8 @@ void AirCollector::timer_callback()
   } else if (mode_of_operation_ == "eva_repair") {
       C_activity = 2.8;
   }
-  cdra.co2_processing_state = 0;
-  cdra.system_health = 1;
-  cdra.data="IDLE";
-  cdra_status_publisher_->publish(cdra);
-  if (mode_of_operation_ != previous_mode_) {
-      RCLCPP_INFO(this->get_logger(), "[Mode Change] %s -> %s | Adjusted CO₂ Activity Rate: %.2f g/min per astronaut", 
-                  previous_mode_.c_str(), mode_of_operation_.c_str(), C_activity);
-      previous_mode_ = mode_of_operation_; 
-  }
 
+  // **Simulate Air Composition (CO₂, Moisture, Contaminants)**
   double delta_co2 = (crew_onboard_ * C_activity * (cabin_pressure_ / 14.7) * (temperature_cutoff_ / 450.0)) * delta_t;
   co2_mass_ += delta_co2;
 
@@ -101,36 +95,124 @@ void AirCollector::timer_callback()
   double delta_contaminants = (crew_onboard_ * contaminants_factor - 0.1 * power_consumption_) * delta_t;
   contaminants_ += delta_contaminants;
 
-  RCLCPP_INFO(this->get_logger(), "CO₂ Mass: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
-              co2_mass_, moisture_content_, contaminants_);
+  // **Log Current Air Composition**
+  RCLCPP_INFO(this->get_logger(), "State: %d | CO₂: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
+              static_cast<int>(state_), co2_mass_, moisture_content_, contaminants_);
   RCLCPP_INFO(this->get_logger(),"==============================================");
-  cdra.co2_processing_state = 1;
-  cdra.system_health = 1;
-  cdra.data="AIR_COLLECTION";
-  cdra_status_publisher_->publish(cdra);
-  if (co2_mass_ > co2_threshold_ || moisture_content_ > moisture_threshold_ || contaminants_ > contaminants_threshold_) 
-  {
-    if (!desiccant_bed_client_->wait_for_service(3s))  
-    {
-      service_unavailable_count_++;
-      RCLCPP_WARN(this->get_logger(), "Desiccant Bed Service unavailable. Holding air... (%d attempts)", service_unavailable_count_);
-      
-      if (service_unavailable_count_ >= 5)  
-      {
-        cdra.co2_processing_state = 1;
-        cdra.system_health = 2;
-        cdra.data="FAILURE";
-        cdra_status_publisher_->publish(cdra);
-        RCLCPP_ERROR(this->get_logger(), "EMERGENCY: Desiccant Bed Service unavailable for too long! Immediate action required!");
-      }
-    } 
-    else 
-    {
-      service_unavailable_count_ = 0;  
-      send_air_to_desiccant_bed();
-    }
-  }
+
+  // **Update Transition System State**
+  update_state();
 }
+
+void AirCollector::update_state() {
+    static std::vector<demo_nova_sanctum::msg::TransitionPair> valid_transitions; // Persist across calls
+    demo_nova_sanctum::msg::TransitionPair transition;
+
+    RCLCPP_INFO(this->get_logger(), "[TS] Checking state transitions. Current state: %d", static_cast<int>(state_));
+
+    bool transition_occurred = false;
+
+    switch (state_) {
+        case AirCollectorState::IDLE:
+            if (co2_mass_ < co2_threshold_) { // Condition to transition
+                transition.current_state = static_cast<int32_t>(AirCollectorState::IDLE);
+                transition.next_state = static_cast<int32_t>(AirCollectorState::COLLECTING);
+                
+                if (valid_transitions.empty() || 
+                    valid_transitions.back().current_state != transition.current_state ||
+                    valid_transitions.back().next_state != transition.next_state) 
+                {
+                    valid_transitions.clear(); // Clear only when a change occurs
+                    valid_transitions.push_back(transition);
+                    transition_occurred = true;
+                }
+
+                RCLCPP_INFO(this->get_logger(), "[TS] Transition: IDLE → COLLECTING");
+                state_ = AirCollectorState::COLLECTING;
+            }
+            break;
+
+        case AirCollectorState::COLLECTING:
+            if (co2_mass_ >= co2_threshold_ || moisture_content_ > moisture_threshold_) {
+                transition.current_state = static_cast<int32_t>(AirCollectorState::COLLECTING);
+                transition.next_state = static_cast<int32_t>(AirCollectorState::THRESHOLD_REACHED);
+
+                if (valid_transitions.empty() || 
+                    valid_transitions.back().current_state != transition.current_state ||
+                    valid_transitions.back().next_state != transition.next_state) 
+                {
+                    valid_transitions.clear();
+                    valid_transitions.push_back(transition);
+                    transition_occurred = true;
+                }
+
+                RCLCPP_INFO(this->get_logger(), "[TS] Transition: COLLECTING → THRESHOLD_REACHED");
+                state_ = AirCollectorState::THRESHOLD_REACHED;
+            }
+            break;
+
+        case AirCollectorState::THRESHOLD_REACHED:
+            if (desiccant_bed_client_->wait_for_service(3s)) {
+                transition.current_state = static_cast<int32_t>(AirCollectorState::THRESHOLD_REACHED);
+                transition.next_state = static_cast<int32_t>(AirCollectorState::SENDING_TO_DESICCANT);
+
+                if (valid_transitions.empty() || 
+                    valid_transitions.back().current_state != transition.current_state ||
+                    valid_transitions.back().next_state != transition.next_state) 
+                {
+                    valid_transitions.clear();
+                    valid_transitions.push_back(transition);
+                    transition_occurred = true;
+                }
+
+                RCLCPP_INFO(this->get_logger(), "[TS] Transition: THRESHOLD_REACHED → SENDING_TO_DESICCANT");
+                state_ = AirCollectorState::SENDING_TO_DESICCANT;
+                send_air_to_desiccant_bed();
+            } else {
+                RCLCPP_ERROR(this->get_logger(), "[ERROR] Desiccant Bed service is unavailable. Holding air!");
+            }
+            break;
+
+        case AirCollectorState::SENDING_TO_DESICCANT:
+            transition.current_state = static_cast<int32_t>(AirCollectorState::SENDING_TO_DESICCANT);
+            transition.next_state = static_cast<int32_t>(AirCollectorState::IDLE);
+
+            if (valid_transitions.empty() || 
+                valid_transitions.back().current_state != transition.current_state ||
+                valid_transitions.back().next_state != transition.next_state) 
+            {
+                valid_transitions.clear();
+                valid_transitions.push_back(transition);
+                transition_occurred = true;
+            }
+
+            RCLCPP_INFO(this->get_logger(), "[TS] Transition: SENDING_TO_DESICCANT → IDLE");
+            state_ = AirCollectorState::IDLE;
+            break;
+    }
+
+    // **Ensure valid transitions are added to the message**
+    cdra.co2_processing_state = static_cast<int>(state_);
+    cdra.system_health = (service_unavailable_count_ < 3) ? 1 : 2;
+
+    if (transition_occurred) {
+        cdra.valid_transitions = valid_transitions;  // Update only on transition
+    }
+
+    if (valid_transitions.empty()) {
+        RCLCPP_WARN(this->get_logger(), "[TS] Warning: No valid transitions detected for state %d", state_);
+    } else {
+        for (const auto& trans : valid_transitions) {
+            RCLCPP_INFO(this->get_logger(), "[TS] Valid Transition Persisted: (%d → %d)", trans.current_state, trans.next_state);
+        }
+    }
+
+    cdra_status_publisher_->publish(cdra);
+}
+
+
+
+
 
 void AirCollector::send_air_to_desiccant_bed() {
   if (!desiccant_bed_client_->wait_for_service(5s)) {
@@ -138,17 +220,14 @@ void AirCollector::send_air_to_desiccant_bed() {
       return;
   }
 
-  cdra.co2_processing_state = 2;
-  cdra.system_health = 1;
-  cdra.data = "SENDING_TO_DESICCANT";
-  cdra_status_publisher_->publish(cdra);
+  
+
   auto request = std::make_shared<demo_nova_sanctum::srv::CrewQuarters::Request>();
   request->co2_mass = co2_mass_;
   request->moisture_content = moisture_content_;
   request->contaminants = contaminants_;
 
-  RCLCPP_INFO(this->get_logger(), "Requesting Desiccant Bed to process air batch...");
-  RCLCPP_INFO(this->get_logger(),"==============================================");
+  RCLCPP_INFO(this->get_logger(), "[REQ] Requesting Desiccant Bed to process air batch...");
  
   auto future = desiccant_bed_client_->async_send_request(request,
     std::bind(&AirCollector::process_desiccant_response, this, std::placeholders::_1));
@@ -164,12 +243,6 @@ void AirCollector::process_desiccant_response(rclcpp::Client<demo_nova_sanctum::
           moisture_content_ = 0.0;
           contaminants_ = 0.0;
 
-          cdra.co2_processing_state = 2;
-          cdra.system_health = 1;
-          cdra.data = "DESICCANT_PROCESSING";
-          cdra_status_publisher_->publish(cdra);
-
-
           RCLCPP_INFO(this->get_logger(), "Air Collector reset. Continuing collection...");
       } else {
           RCLCPP_WARN(this->get_logger(), "Desiccant Bed is still processing. Holding air...");
@@ -178,6 +251,9 @@ void AirCollector::process_desiccant_response(rclcpp::Client<demo_nova_sanctum::
       RCLCPP_ERROR(this->get_logger(), "Exception while calling Desiccant Bed: %s", e.what());
   }
 }
+
+
+
 
 
 void AirCollector::simulate_temperature_pressure() {

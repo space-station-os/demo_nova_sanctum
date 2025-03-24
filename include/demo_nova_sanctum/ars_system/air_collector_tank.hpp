@@ -6,7 +6,7 @@
 #include "sensor_msgs/msg/fluid_pressure.hpp"
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
 #include "demo_nova_sanctum/msg/cdra_status.hpp"
-
+#include "demo_nova_sanctum/msg/transition_pair.hpp"
 /**
  * @brief A simple PD Controller for temperature and pressure regulation.
  */
@@ -46,6 +46,16 @@ struct PIDController
  * - **Handles emergency situations if the Desiccant Bed service remains unavailable**.
  * - **Supports multiple system modes**: `idle`, `exercise`, `emergency`, `biological_research`, `eva_repair`.
  */
+
+
+ // Define Air Collector States
+enum class AirCollectorState {
+  IDLE,                   // No processing
+  COLLECTING,             // Collecting air samples
+  THRESHOLD_REACHED,      // CO₂/Moisture exceeds threshold
+  SENDING_TO_DESICCANT    // Sending air to Desiccant Bed
+};
+
 class AirCollector : public rclcpp::Node
 {
 public:
@@ -53,6 +63,9 @@ public:
    * @brief Constructor initializes parameters, timers, and service clients.
    */
   AirCollector();
+
+  AirCollectorState state_;
+  std::vector<std::string> ap_labels_;  ///< Current state of the Air Collector
 
 private:
   /**
@@ -83,7 +96,7 @@ private:
    * @brief Updates `C_activity_` dynamically based on the mode of operation.
    */
   void update_c_activity();
-
+  void update_state();
   /*** SYSTEM PARAMETERS ***/
   double flow_rate_;          ///< Flow rate in SCFM
   double co2_intake_;         ///< CO₂ intake in mmHg

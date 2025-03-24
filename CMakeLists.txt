@@ -22,7 +22,9 @@ set(msg_files
   
   "src/ars_systems/msg/AirData.msg"
   "src/ars_systems/srv/CrewQuarters.srv"
-
+  "src/ars_systems/msg/BuchiAutomaton.msg"
+  "src/ars_systems/msg/FailureAlert.msg"
+  "src/ars_systems/msg/TransitionPair.msg"
   
   "src/ors_systems/msg/Sabatier.msg"
   "src/ors_systems/msg/Water.msg"
@@ -46,8 +48,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES  std_msgs sensor_msgs visualization_msgs
 )
 
-  
 
+install(PROGRAMS
+        src/ars_systems/scripts/buchi_automaton.py
+        src/ars_systems/scripts/failure_monitor.py
+        DESTINATION lib/${PROJECT_NAME})
 
 
 include_directories(include)
