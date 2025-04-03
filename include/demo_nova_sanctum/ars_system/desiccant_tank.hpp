@@ -7,6 +7,7 @@
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
 #include <mutex>
 #include "demo_nova_sanctum/msg/cdra_status.hpp"
+#include "demo_nova_sanctum/msg/air_data.hpp"
 /**
  * @brief A simple PID Controller for temperature and pressure regulation.
  */
@@ -129,7 +130,8 @@ private:
   rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_;
   rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_bed_2;
   rclcpp::TimerBase::SharedPtr timer_; ///< Timer for gradual air processing
-  
+  rclcpp::Publisher<demo_nova_sanctum::msg::AirData>::SharedPtr air_quality_publisher_;
+
 
   demo_nova_sanctum::msg::CdraStatus cdra; ///< CDRA status message
   /*** THREAD SAFETY ***/

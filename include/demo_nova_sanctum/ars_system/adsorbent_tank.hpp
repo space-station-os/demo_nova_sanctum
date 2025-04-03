@@ -7,6 +7,7 @@
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
 #include "std_msgs/msg/float64.hpp"
 #include "demo_nova_sanctum/msg/cdra_status.hpp"
+#include "demo_nova_sanctum/msg/air_data.hpp"
 
 /**
  * @class AdsorbentBed
@@ -76,6 +77,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_; ///< Timer for periodic processing
   rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_;
   demo_nova_sanctum::msg::CdraStatus cdra;
+  rclcpp::Publisher<demo_nova_sanctum::msg::AirData>::SharedPtr air_quality_publisher_;
   /*** SYSTEM STATES ***/
   bool is_active_; ///< Indicates if the adsorbent bed is currently processing air
 

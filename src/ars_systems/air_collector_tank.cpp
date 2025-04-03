@@ -34,13 +34,14 @@ AirCollector::AirCollector()
   temperature_publisher_ = this->create_publisher<sensor_msgs::msg::Temperature>("/temperature", 10);
   pressure_publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>("/pipe_pressure", 10);
   desiccant_bed_client_ = this->create_client<demo_nova_sanctum::srv::CrewQuarters>("/crew_co2_service");
+  air_quality_publisher_ = this->create_publisher<demo_nova_sanctum::msg::AirData>("/collector_air_quality", 10);
 
   timer_ = this->create_wall_timer(1s, std::bind(&AirCollector::timer_callback, this));
 
 
   cdra_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::CdraStatus>("/cdra_status", 10);
   cdra=demo_nova_sanctum::msg::CdraStatus();  
-  RCLCPP_INFO(this->get_logger(), "Air Collector System successfully initialized.");
+  RCLCPP_INFO(this->get_logger(), "\033[1;34mAir Collector System successfully initialized.\033[0m");
 }
 
 void AirCollector::timer_callback()
@@ -101,37 +102,62 @@ void AirCollector::timer_callback()
   double delta_contaminants = (crew_onboard_ * contaminants_factor - 0.1 * power_consumption_) * delta_t;
   contaminants_ += delta_contaminants;
 
-  RCLCPP_INFO(this->get_logger(), "CO₂ Mass: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%",
+  RCLCPP_INFO(this->get_logger(), "\033[1;34mCO₂ Mass: %.2f g, Moisture: %.2f %%, Contaminants: %.2f %%\033[0m",
               co2_mass_, moisture_content_, contaminants_);
   RCLCPP_INFO(this->get_logger(),"==============================================");
   cdra.co2_processing_state = 1;
   cdra.system_health = 1;
   cdra.data="AIR_COLLECTION";
   cdra_status_publisher_->publish(cdra);
-  if (co2_mass_ > co2_threshold_ || moisture_content_ > moisture_threshold_ || contaminants_ > contaminants_threshold_) 
+
+  auto msg = demo_nova_sanctum::msg::AirData();
+  msg.header.stamp = this->get_clock()->now();
+  msg.header.frame_id="collector";
+  msg.co2_mass = co2_mass_;
+  msg.moisture_content = moisture_content_;
+  msg.contaminants = contaminants_;
+
+  air_quality_publisher_->publish(msg);
+
+  double total=co2_mass_+moisture_content_+contaminants_;
+  if (total<tank_capacity_) 
   {
-    if (!desiccant_bed_client_->wait_for_service(3s))  
-    {
-      service_unavailable_count_++;
-      RCLCPP_WARN(this->get_logger(), "Desiccant Bed Service unavailable. Holding air... (%d attempts)", service_unavailable_count_);
-      
-      if (service_unavailable_count_ >= 5)  
+    RCLCPP_INFO(this->get_logger(), "\033[1;34mTank Capacity: %.2f g\033[0m", total);
+   
+  
+
+      if (co2_mass_ < co2_threshold_ ) 
       {
-        cdra.co2_processing_state = 1;
-        cdra.system_health = 2;
-        cdra.data="FAILURE";
-        cdra_status_publisher_->publish(cdra);
-        RCLCPP_ERROR(this->get_logger(), "EMERGENCY: Desiccant Bed Service unavailable for too long! Immediate action required!");
+        if (!desiccant_bed_client_->wait_for_service(3s))  
+        {
+          service_unavailable_count_++;
+          RCLCPP_WARN(this->get_logger(), "Desiccant Bed Service unavailable. Holding air... (%d attempts)", service_unavailable_count_);
+          
+          if (service_unavailable_count_ >= 5)  
+          {
+            cdra.co2_processing_state = 1;
+            cdra.system_health = 2;
+            cdra.data="FAILURE";
+            cdra_status_publisher_->publish(cdra);
+            RCLCPP_ERROR(this->get_logger(), "EMERGENCY: Desiccant Bed Service unavailable for too long! Immediate action required!");
+          }
+        } 
+        else 
+        {
+          service_unavailable_count_ = 0;  
+          send_air_to_desiccant_bed();
+        }
       }
-    } 
+    }
     else 
     {
-      service_unavailable_count_ = 0;  
-      send_air_to_desiccant_bed();
+      RCLCPP_ERROR(this->get_logger(), "\033[1;31mTank Capacity Exceeded! Current Total: %.2f g\033[0m", total);
+      cdra.co2_processing_state = 1;
+      cdra.system_health = 2;
+      cdra.data="FAILURE";
+      cdra_status_publisher_->publish(cdra);
     }
-  }
 }
-
 void AirCollector::send_air_to_desiccant_bed() {
   if (!desiccant_bed_client_->wait_for_service(5s)) {
       RCLCPP_ERROR(this->get_logger(), "Desiccant Bed service is not available!");
@@ -147,7 +173,7 @@ void AirCollector::send_air_to_desiccant_bed() {
   request->moisture_content = moisture_content_;
   request->contaminants = contaminants_;
 
-  RCLCPP_INFO(this->get_logger(), "Requesting Desiccant Bed to process air batch...");
+  RCLCPP_INFO(this->get_logger(), "\033[1;34mRequesting Desiccant Bed to process air batch...\033[0m");
   RCLCPP_INFO(this->get_logger(),"==============================================");
  
   auto future = desiccant_bed_client_->async_send_request(request,
@@ -158,7 +184,7 @@ void AirCollector::process_desiccant_response(rclcpp::Client<demo_nova_sanctum::
   try {
       auto response = future.get();
       if (response->success) {
-          RCLCPP_INFO(this->get_logger(), "Desiccant Bed accepted air for processing. Opening valve...");
+          RCLCPP_INFO(this->get_logger(), "\033[1;34mDesiccant Bed accepted air for processing. Opening valve...");
           
           co2_mass_ = 0.0;
           moisture_content_ = 0.0;
@@ -170,7 +196,7 @@ void AirCollector::process_desiccant_response(rclcpp::Client<demo_nova_sanctum::
           cdra_status_publisher_->publish(cdra);
 
 
-          RCLCPP_INFO(this->get_logger(), "Air Collector reset. Continuing collection...");
+          RCLCPP_INFO(this->get_logger(), "\033[1;34mAir Collector reset. Continuing collection...\033[0m");
       } else {
           RCLCPP_WARN(this->get_logger(), "Desiccant Bed is still processing. Holding air...");
       }

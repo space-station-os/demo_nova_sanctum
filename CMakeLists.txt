@@ -126,15 +126,12 @@ ament_target_dependencies(ultrasound rosidl_default_generators rclcpp sensor_msg
 rosidl_target_interfaces(ultrasound ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
-
-
 # CDRA SAFETY
 
-add_executable(system_safety src/system_verification.cpp)
-ament_target_dependencies(system_safety std_srvs rosidl_default_generators rclcpp visualization_msgs)
 
-rosidl_target_interfaces(system_safety ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
+add_executable(safety src/stl_monitor.cpp)
+ament_target_dependencies(safety rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(safety ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
 install(TARGETS
@@ -153,9 +150,7 @@ install(TARGETS
   ionizaton
   clean_water_tank
   ultrasound
-
-
-  system_safety
+  safety
   
   DESTINATION lib/${PROJECT_NAME})
 

@@ -42,7 +42,11 @@ DesiccantServer::DesiccantServer()
   adsorbent_co2_service_ = this->create_service<demo_nova_sanctum::srv::CrewQuarters>(
     "/desiccant_bed2",
     std::bind(&DesiccantServer::handle_moisture_request, this, std::placeholders::_1, std::placeholders::_2));
+
   
+
+  air_quality_publisher_ = this->create_publisher<demo_nova_sanctum::msg::AirData>("/desiccant_air_quality", 10);
+
   cdra_status_publisher_=this->create_publisher<demo_nova_sanctum::msg::CdraStatus>("/cdra_status", 10);
   cdra=demo_nova_sanctum::msg::CdraStatus();
   RCLCPP_INFO(this->get_logger(), "Desiccant Server successfully initialized.");
@@ -140,6 +144,16 @@ void DesiccantServer::handle_adsorbed_air(
     cdra.data = "Humidification Complete";
     cdra_status_publisher_->publish(cdra);
 
+
+    auto msg = demo_nova_sanctum::msg::AirData();
+    msg.header.stamp = this->get_clock()->now();
+    msg.header.frame_id= "Desiccant Bed 2";
+    msg.co2_mass = co2_;
+    msg.moisture_content = moisture_content_;
+    msg.contaminants = contaminants_;
+
+    air_quality_publisher_->publish(msg);
+
     
     is_active_desiccant2 = false;
     response->success = true;
@@ -195,6 +209,16 @@ void DesiccantServer::process_air_data() {
               "Processing air: Remaining Moisture: %.2f%%, Remaining Contaminants: %.2f%%",
               moisture_content_, contaminants_);
   RCLCPP_INFO(this->get_logger(),"==============================================");
+
+
+  auto msg = demo_nova_sanctum::msg::AirData();
+  msg.header.stamp = this->get_clock()->now();
+  msg.header.frame_id="Desiccant Bed 1";
+  msg.co2_mass = co2_;
+  msg.moisture_content = moisture_content_;
+  msg.contaminants = contaminants_;
+
+  air_quality_publisher_->publish(msg);
 
   // **Send air to Adsorbent Bed ONLY after confirming minimal moisture**
   if (moisture_content_ <= 0.3 && contaminants_ <= 0.3) {
@@ -276,8 +300,8 @@ void DesiccantServer::handle_moisture_request(
   std::lock_guard<std::mutex> lock(data_mutex_);
 
   // **Check if this is the returned processed air from Adsorbent Bed**
-  if (request->co2_mass <= 5.0 && request->moisture_content > 0.0) {
-      RCLCPP_INFO(this->get_logger(), "Received processed air from Adsorbent Bed. Reintroducing moisture...");
+  if (request->co2_mass <= 5.0 && request->moisture_content < 2.0) {
+      RCLCPP_INFO(this->get_logger(), "\033[1;32mReceived processed air from Adsorbent Bed. Reintroducing moisture...\033[0m");
       moisture_content_ = request->moisture_content;
       contaminants_ = request->contaminants;
       is_active_ = false;  // Ready for next cycle
@@ -308,7 +332,7 @@ void DesiccantServer::handle_moisture_request(
   double target_moisture = 80.0; 
   double increment = humidification_rate * 1.5;  // Factor applied for faster moisture increase
 
-  RCLCPP_INFO(this->get_logger(), "Starting humidification process... Target Moisture: %.2f%%", target_moisture);
+  RCLCPP_INFO(this->get_logger(), "\033[1;32mStarting humidification process... Target Moisture: %.2f%%\033[0m", target_moisture);
 
   // Incrementally increase moisture in a loop
   while (moisture_content_ < target_moisture) {
@@ -316,14 +340,15 @@ void DesiccantServer::handle_moisture_request(
       if (moisture_content_ > target_moisture) {
           moisture_content_ = target_moisture;
       }
-      RCLCPP_INFO(this->get_logger(), "Moisture level: %.2f%%", moisture_content_);
+      RCLCPP_INFO(this->get_logger(), "\033[1;32mMoisture level: %.2f%%\033[0m", moisture_content_);
   }
 
-  RCLCPP_INFO(this->get_logger(), "Target moisture level reached.");
+  RCLCPP_INFO(this->get_logger(), "\033[1;32mTarget moisture level reached.\033[0m");
   response->success = true;
   response->message = "Desiccant Bed started processing the new batch.";
 
-  process_air_data();  // Process air after reaching moisture target
+
+ 
 }
 
 

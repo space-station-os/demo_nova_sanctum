@@ -37,4 +37,6 @@ def generate_launch_description():
             parameters=[params_file],
             emulate_tty=True
         ),
+        
+        
     ])
