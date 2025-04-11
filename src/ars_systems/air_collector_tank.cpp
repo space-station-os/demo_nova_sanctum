@@ -18,7 +18,7 @@ AirCollector::AirCollector()
   this->declare_parameter("system_name", "demo_nova_sanctum");
   this->declare_parameter("mode_of_operation", "idle");  
 
-  this->declare_parameter("co2_threshold", 500.0);
+  this->declare_parameter("co2_threshold", 100.0);
   this->declare_parameter("moisture_threshold", 70.0);
   this->declare_parameter("contaminants_threshold", 30.0);
 
@@ -33,7 +33,7 @@ AirCollector::AirCollector()
 
   temperature_publisher_ = this->create_publisher<sensor_msgs::msg::Temperature>("/temperature", 10);
   pressure_publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>("/pipe_pressure", 10);
-  desiccant_bed_client_ = this->create_client<demo_nova_sanctum::srv::CrewQuarters>("/crew_co2_service");
+  desiccant_bed_client_ = this->create_client<demo_nova_sanctum::srv::CrewQuarters>("/desiccant_bed1");
   air_quality_publisher_ = this->create_publisher<demo_nova_sanctum::msg::AirData>("/collector_air_quality", 10);
 
   timer_ = this->create_wall_timer(1s, std::bind(&AirCollector::timer_callback, this));
@@ -80,7 +80,8 @@ void AirCollector::timer_callback()
   if (mode_of_operation_ != previous_mode_) {
       RCLCPP_INFO(this->get_logger(), "[Mode Change] %s -> %s | Adjusted CO₂ Activity Rate: %.2f g/min per astronaut", 
                   previous_mode_.c_str(), mode_of_operation_.c_str(), C_activity);
-      previous_mode_ = mode_of_operation_; 
+      previous_mode_ = mode_of_operation_;
+      update_other_nodes_parameters(mode_of_operation_); 
   }
 
   double delta_co2 = (crew_onboard_ * C_activity * (cabin_pressure_ / 14.7) * (temperature_cutoff_ / 450.0)) * delta_t;
@@ -126,7 +127,7 @@ void AirCollector::timer_callback()
    
   
 
-      if (co2_mass_ < co2_threshold_ ) 
+      if (co2_mass_ > co2_threshold_ ) 
       {
         if (!desiccant_bed_client_->wait_for_service(3s))  
         {
@@ -157,6 +158,7 @@ void AirCollector::timer_callback()
       cdra.data="FAILURE";
       cdra_status_publisher_->publish(cdra);
     }
+    
 }
 void AirCollector::send_air_to_desiccant_bed() {
   if (!desiccant_bed_client_->wait_for_service(5s)) {
@@ -262,6 +264,35 @@ void AirCollector::simulate_temperature_pressure() {
               current_temperature_, current_pressure_);
 }
 
+
+void AirCollector::update_other_nodes_parameters(const std::string &mode) {
+  using rclcpp::AsyncParametersClient;
+
+  std::map<std::string, double> desiccant_rates {
+    {"idle", 0.9}, {"standby", 1.0}, {"exercise", 1.2},
+    {"emergency", 1.3}, {"biological_research", 1.1}, {"eva_repair", 1.25}
+  };
+  std::map<std::string, double> adsorbent_eff {
+    {"idle", 0.90}, {"standby", 0.95}, {"exercise", 1.05},
+    {"emergency", 1.15}, {"biological_research", 1.00}, {"eva_repair", 1.1}
+  };
+
+  auto desiccant_client = std::make_shared<AsyncParametersClient>(this, "desiccant_server");
+  auto adsorbent_client = std::make_shared<AsyncParametersClient>(this, "adsorbent_bed");
+
+  if (desiccant_client->wait_for_service(1s)) {
+    desiccant_client->set_parameters({
+      rclcpp::Parameter("moisture_removal_rate", desiccant_rates[mode]),
+      rclcpp::Parameter("contaminant_removal_rate", desiccant_rates[mode])
+    });
+  }
+
+  if (adsorbent_client->wait_for_service(1s)) {
+    adsorbent_client->set_parameters({
+      rclcpp::Parameter("co2_removal_efficiency", adsorbent_eff[mode])
+    });
+  }
+}
 
 
 int main(int argc, char **argv)

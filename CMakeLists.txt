@@ -58,15 +58,22 @@ ament_target_dependencies(collector std_srvs rosidl_default_generators rclcpp se
 rosidl_target_interfaces(collector ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
-add_executable(desiccant src/ars_systems/desiccant_tank.cpp)
-ament_target_dependencies(desiccant std_srvs rosidl_default_generators rclcpp sensor_msgs)
-rosidl_target_interfaces(desiccant ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
-add_executable(adsorbent src/ars_systems/adsorbent_tank.cpp)
-ament_target_dependencies(adsorbent std_srvs rosidl_default_generators rclcpp sensor_msgs)
-rosidl_target_interfaces(adsorbent ${PROJECT_NAME} "rosidl_typesupport_cpp")
+add_executable(desiccant1 src/ars_systems/desiccant_tank_1.cpp)
+ament_target_dependencies(desiccant1 std_srvs rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(desiccant1 ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
+add_executable(desiccant2 src/ars_systems/desiccant_tank_2.cpp)
+ament_target_dependencies(desiccant2 std_srvs rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(desiccant2 ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+add_executable(adsorbent1 src/ars_systems/adsorbent_tank_1.cpp )
+ament_target_dependencies(adsorbent1 std_srvs rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(adsorbent1 ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+add_executable(adsorbent2 src/ars_systems/adsorbent_tank_2.cpp )
+ament_target_dependencies(adsorbent2 std_srvs rosidl_default_generators rclcpp sensor_msgs)
+rosidl_target_interfaces(adsorbent2 ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 add_executable(sabatier src/ors_systems/src/sabatier.cpp)
 ament_target_dependencies(sabatier std_srvs rosidl_default_generators rclcpp sensor_msgs)
@@ -136,8 +143,10 @@ rosidl_target_interfaces(safety ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 install(TARGETS
   collector
-  desiccant
-  adsorbent
+  desiccant1
+  desiccant2
+  adsorbent1 
+  adsorbent2
   sabatier
   water_pub
   deionization_bed
@@ -162,6 +171,10 @@ install(DIRECTORY config/
   DESTINATION share/${PROJECT_NAME}/config
 )
 
+install(PROGRAMS
+  scripts/iss_simulator.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 
 

@@ -11,12 +11,10 @@ air_collector_node:
     system_name: "demo_nova_sanctum"
     mode_of_operation: "standby"
 
-    
     co2_threshold: 500.0
     moisture_threshold: 70.0
     contaminants_threshold: 30.0
 
-    
     temp_kp: 0.1
     temp_ki: 0.01
     temp_kd: 0.005
@@ -25,14 +23,18 @@ air_collector_node:
     press_kd: 0.005
 
 
-/desiccant_server:
+/desiccant_bed_1:
   ros__parameters:
-    moisture_removal_rate: 0.95
-    contaminant_removal_rate: 0.90
+    moisture_removal_rate: 0.20
+    contaminant_removal_rate: 0.20
     emergency_threshold: 5.0
 
+/desiccant_bed_2:
+  ros__parameters:
+    humidification_rate: 1.5
+    emergency_threshold: 5.0
 
-/adsorbent_bed:
+/adsorbent_bed_1:
   ros__parameters:
     co2_removal_efficiency: 0.95
     co2_to_space_ratio: 0.40
@@ -40,3 +42,10 @@ air_collector_node:
     temperature_tolerance: 30.0
     kp: 0.6
     kd: 0.15
+    co2_adsorption_rate_constant: 0.015  # Langmuir k_ads
+    co2_capacity: 850.0  # Total CO₂ adsorption capacity
+
+/adsorbent_bed_2:
+  ros__parameters:
+    desorption_temperature: 400.0
+    co2_desorption_rate_constant: 0.05  # Langmuir desorption rate

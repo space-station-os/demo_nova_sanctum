@@ -22,21 +22,42 @@ def generate_launch_description():
 
         Node(
             package='demo_nova_sanctum',
-            executable='desiccant',
-            name='desiccant_bed',
+            executable='desiccant1',
+            name='desiccant_bed_1',
             output='screen',
             parameters=[params_file],
             emulate_tty=True
         ),
-        
         Node(
             package='demo_nova_sanctum',
-            executable='adsorbent',
-            name='adsorbent_bed',
+            executable='desiccant2',
+            name='desiccant_bed_2',
             output='screen',
             parameters=[params_file],
             emulate_tty=True
         ),
-        
-        
+        Node(
+            package='demo_nova_sanctum',
+            executable='adsorbent1',
+            name='adsorbent_bed_1',
+            output='screen',
+            parameters=[params_file],
+            emulate_tty=True
+        ),
+        Node(
+            package='demo_nova_sanctum',
+            executable='adsorbent2',
+            name='adsorbent_bed_2',
+            output='screen',
+            parameters=[params_file],
+            emulate_tty=True
+        ),
+
+       
+        # Node(
+        #     package='rosbridge_server',
+        #     executable='rosbridge_websocket',
+        #     name='rosbridge_websocket',
+        #     output='screen'
+        # ),
     ])

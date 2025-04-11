@@ -85,7 +85,7 @@ private:
    */
   void update_c_activity();
 
-  
+  void update_other_nodes_parameters(const std::string &mode);
 
   /*** SYSTEM PARAMETERS ***/
   double flow_rate_;          ///< Flow rate in SCFM

@@ -41,7 +41,7 @@ def read_rosbag(bag_path, topic_name):
 
 
 if __name__ == "__main__":
-    bag_path = '/home/siddarth/ros2ws/cycles4'  # Path to your bag file
+    bag_path = '/home/siddarth/ros2ws/cycles5'  # Path to your bag file
     topic_name = '/adsorbent_air_quality'
 
     df = read_rosbag(bag_path, topic_name)
