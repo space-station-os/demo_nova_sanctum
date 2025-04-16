@@ -101,7 +101,7 @@ void AdsorbentBed1::process_adsorption()
   auto msg = demo_nova_sanctum::msg::AirData();
   msg.header.stamp = this->get_clock()->now();
   msg.header.frame_id = "adsorbent_bed_1";
-  msg.co2_mass = co2_;
+  msg.co2_mass = delta_q;
   msg.moisture_content = moisture_;
   msg.contaminants = contaminants_;
   air_quality_publisher_->publish(msg);

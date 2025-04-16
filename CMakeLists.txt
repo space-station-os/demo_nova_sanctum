@@ -137,6 +137,10 @@ rosidl_target_interfaces(ultrasound ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
 add_executable(safety src/stl_monitor.cpp)
+target_sources(safety PRIVATE
+  src/stl_monitor.cpp
+)
+
 ament_target_dependencies(safety rosidl_default_generators rclcpp sensor_msgs)
 rosidl_target_interfaces(safety ${PROJECT_NAME} "rosidl_typesupport_cpp")
 

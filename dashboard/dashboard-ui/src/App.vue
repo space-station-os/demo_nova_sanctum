@@ -3,10 +3,11 @@
     <h1>🛰️ ISS Air Revitalization Dashboard</h1>
 
     <StatusHUD
-      :status="status"
-      :mode="mode"
+      :status="mainStatus"
+      :mode="systemMode"
       :temperature="temperature"
       :pressure="pressure"
+      :stlStatus="stlStatus"
     />
 
     <div class="dashboard-layout">
@@ -39,17 +40,22 @@
       />
     </div>
   </div>
+
+  <EmergencyPopup :show="emergencyActive" @dismiss="emergencyActive = false" />
 </template>
 
 <script>
+/* global ROSLIB */
 import Tank from "./components/Tank.vue";
 import Pipe from "./components/Pipe.vue";
 import StatusHUD from "./components/StatusHUD.vue";
+import EmergencyPopup from "./components/Emergency_popup.vue";
 
 export default {
-  components: { Tank, Pipe, StatusHUD },
+  components: { Tank, Pipe, StatusHUD, EmergencyPopup },
   data() {
     return {
+      ros: null,
       co2_mass: 0,
       moisture_content: 0,
       contaminants: 0,
@@ -60,10 +66,17 @@ export default {
       adsorbent_moisture: 0,
       adsorbent_contaminants: 0,
       imgUrl: "/assets/iss_bg.jpg",
-      status: "Nominal",
-      mode: "Idle",
+      mainStatus: "Nominal",
+      systemMode: "Idle",
       temperature: 72.0,
       pressure: 14.5,
+      stlStatus: {
+        collector: "PASS",
+        desiccant_moisture: "PASS",
+        desiccant_contaminants: "PASS",
+        adsorbent: "PASS",
+      },
+      emergencyActive: false,
     };
   },
   computed: {
@@ -79,11 +92,11 @@ export default {
     },
   },
   mounted() {
-    const ros = new window.ROSLIB.Ros({ url: "ws://localhost:9090" });
+    this.ros = new ROSLIB.Ros({ url: "ws://localhost:9090" });
 
     const subscribeTopic = (topic, cb) => {
-      const sub = new window.ROSLIB.Topic({
-        ros,
+      const sub = new ROSLIB.Topic({
+        ros: this.ros,
         name: topic,
         messageType: "demo_nova_sanctum/msg/AirData",
       });
@@ -106,6 +119,27 @@ export default {
       this.adsorbent_co2 = msg.co2_mass;
       this.adsorbent_moisture = msg.moisture_content;
       this.adsorbent_contaminants = msg.contaminants;
+    });
+
+    const stlListener = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/stl_monitor/status",
+      messageType: "std_msgs/String",
+    });
+
+    stlListener.subscribe((msg) => {
+      try {
+        const parsed = JSON.parse(msg.data);
+        this.stlStatus = parsed;
+
+        // Check for CODE_RED
+        const values = Object.values(parsed);
+        if (values.includes("CODE_RED")) {
+          this.emergencyActive = true;
+        }
+      } catch (e) {
+        console.error("Failed to parse STL monitor status:", e);
+      }
     });
   },
 };

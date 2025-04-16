@@ -1,16 +1,35 @@
 #include "demo_nova_sanctum/stl_monitor.hpp"
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <chrono>
+#include <sstream>
+#include <unordered_map>
+#include <iomanip>
+
+using namespace std::chrono_literals;
 
 STLMonitor::STLMonitor() : Node("stl_monitor")
 {
-    // Setting optimized bounds
-    collector_a_ = 19.784776;      // Lower bound for /collector_air_quality
-    collector_b_ = 332.612543;     // Upper bound for /collector_air_quality
+    bounds_["collector"] = {0.0, 197.09};
+    bounds_["desiccant_moisture"] = {0.0, 153.21};
+    bounds_["desiccant_contaminants"] = {0.0, 35.08};
+    bounds_["adsorbent"] = {0.0, 123.61};
 
-    desiccant_a_ = 38.461645;      // Lower bound for /desiccant_air_quality
-    desiccant_b_ = 351.864317;     // Upper bound for /desiccant_air_quality
+    violation_counters_ = {
+        {"collector", 0}, {"desiccant_moisture", 0}, {"desiccant_contaminants", 0}, {"adsorbent", 0}
+    };
 
-    adsorbent_a_ = 1.36371;        // Lower bound for /adsorbent_air_quality
-    adsorbent_b_ = 188.288461;     // Upper bound for /adsorbent_air_quality
+    recovery_counters_ = {
+        {"collector", 0}, {"desiccant_moisture", 0}, {"desiccant_contaminants", 0}, {"adsorbent", 0}
+    };
+
+    system_state_ = {
+        {"collector", "OK"}, {"desiccant_moisture", "OK"},
+        {"desiccant_contaminants", "OK"}, {"adsorbent", "OK"}
+    };
+
+    last_update_time_ = this->now();
 
     collector_sub_ = this->create_subscription<demo_nova_sanctum::msg::AirData>(
         "/collector_air_quality", 10,
@@ -24,69 +43,110 @@ STLMonitor::STLMonitor() : Node("stl_monitor")
         "/adsorbent_air_quality", 10,
         std::bind(&STLMonitor::adsorbentCallback, this, std::placeholders::_1));
 
-    RCLCPP_INFO(this->get_logger(), "STL Monitor Node Initialized.");
+    gui_pub_ = this->create_publisher<std_msgs::msg::String>("/stl_monitor/status", 10);
+    crew_alert_pub_ = this->create_publisher<std_msgs::msg::String>("/crew_alert", 10);
+
+    RCLCPP_INFO(this->get_logger(), "STL Monitor Node Initialized with Robustness Tracking and Alerts.");
 }
 
 STLMonitor::~STLMonitor() {}
 
-bool STLMonitor::checkBounds(double value, double a, double b)
+bool STLMonitor::checkBounds(double value, const std::pair<double, double>& bounds)
 {
-    return value >= a && value <= b;
+    return value >= bounds.first && value <= bounds.second;
+}
+
+double STLMonitor::robustness(double value, const std::pair<double, double>& bounds)
+{
+    return std::min(value - bounds.first, bounds.second - value);
+}
+
+void STLMonitor::checkSignal(const std::string& label, const std::string& key, double value, const std::pair<double, double>& bounds)
+{
+    double r = robustness(value, bounds);
+    last_update_time_ = this->now();
+
+    bool in_bounds = checkBounds(value, bounds);
+    std::string new_status;
+
+    if (in_bounds) {
+        violation_counters_[key] = 0;
+
+        if (system_state_[key] != "OK") {
+            recovery_counters_[key]++;
+            if (recovery_counters_[key] >= 5) {
+                new_status = "OK";
+                RCLCPP_INFO(this->get_logger(), "[%s] Fully recovered. Status: OK. Value: %.2f", key.c_str(), value);
+            } else {
+                new_status = system_state_[key];
+                RCLCPP_INFO(this->get_logger(), "[%s] Recovering... (%d/5) Value: %.2f", key.c_str(), recovery_counters_[key], value);
+            }
+        } else {
+            new_status = "OK";
+            RCLCPP_INFO(this->get_logger(), "[%s] OK. Value: %.2f | Robustness: %.2f", key.c_str(), value, r);
+        }
+    } else {
+        recovery_counters_[key] = 0;
+        violation_counters_[key]++;
+
+        if (violation_counters_[key] > 10) {
+            new_status = "CODE_RED";
+            if (system_state_[key] != "CODE_RED") {
+                publishCrewAlert(label, value);
+                RCLCPP_FATAL(this->get_logger(), "[%s] CRITICAL VIOLATION — CODE RED. Value: %.2f", key.c_str(), value);
+            }
+        } else {
+            new_status = "FAIL";
+            RCLCPP_WARN(this->get_logger(), "[%s] OUT OF BOUNDS (%d). Value: %.2f", key.c_str(), violation_counters_[key], value);
+        }
+    }
+
+    system_state_[key] = new_status;
+
+    // Publish current status map to GUI
+    std::ostringstream json;
+    json << "{";
+    bool first = true;
+    for (const auto& kv : system_state_) {
+        if (!first) json << ", ";
+        json << "\"" << kv.first << "\": \"" << kv.second << "\"";
+        first = false;
+    }
+    json << "}";
+
+    std_msgs::msg::String msg;
+    msg.data = json.str();
+    gui_pub_->publish(msg);
+}
+
+void STLMonitor::publishCrewAlert(const std::string& label, double value)
+{
+    std_msgs::msg::String alert;
+    alert.data = "[ALERT] " + label + " triggered CODE RED. Immediate action required! Value: " + std::to_string(value);
+    crew_alert_pub_->publish(alert);
+    RCLCPP_FATAL(this->get_logger(), "%s", alert.data.c_str());
 }
 
 void STLMonitor::collectorCallback(const demo_nova_sanctum::msg::AirData::SharedPtr msg)
 {
-    bool in_bounds = checkBounds(msg->co2_mass, collector_a_, collector_b_);
-    if (in_bounds)
-    {
-        RCLCPP_INFO(this->get_logger(), "COLLECTOR: Signal within range [%.2f, %.2f]. Value: %.2f", collector_a_, collector_b_, msg->co2_mass);
-    }
-    else
-    {
-        RCLCPP_WARN(this->get_logger(), "COLLECTOR: Signal out of range! Value: %.2f", msg->co2_mass);
-    }
+    checkSignal("COLLECTOR (CO2)", "collector", msg->co2_mass, bounds_["collector"]);
 }
 
 void STLMonitor::desiccantCallback(const demo_nova_sanctum::msg::AirData::SharedPtr msg)
 {
-    bool in_bounds = checkBounds(msg->co2_mass, desiccant_a_, desiccant_b_);
-    if (in_bounds)
-    {
-        RCLCPP_INFO(this->get_logger(), "DESICCANT: Signal within range [%.2f, %.2f]. Value: %.2f", desiccant_a_, desiccant_b_, msg->co2_mass);
-    }
-    else
-    {
-        RCLCPP_WARN(this->get_logger(), "DESICCANT: Signal out of range! Value: %.2f", msg->co2_mass);
-    }
+    checkSignal("DESICCANT (Moisture)", "desiccant_moisture", msg->moisture_content, bounds_["desiccant_moisture"]);
+    checkSignal("DESICCANT (Contaminants)", "desiccant_contaminants", msg->contaminants, bounds_["desiccant_contaminants"]);
 }
 
 void STLMonitor::adsorbentCallback(const demo_nova_sanctum::msg::AirData::SharedPtr msg)
 {
-    bool in_bounds = checkBounds(msg->co2_mass, adsorbent_a_, adsorbent_b_);
-    if (in_bounds)
-    {
-        RCLCPP_INFO(this->get_logger(), "ADSORBENT: Signal within range [%.2f, %.2f]. Value: %.2f", adsorbent_a_, adsorbent_b_, msg->co2_mass);
-    }
-    else
-    {
-        RCLCPP_WARN(this->get_logger(), "ADSORBENT: Signal out of range! Value: %.2f", msg->co2_mass);
-    }
+    checkSignal("ADSORBENT (CO2)", "adsorbent", msg->co2_mass, bounds_["adsorbent"]);
 }
-
-
 
 int main(int argc, char *argv[])
 {
-    // Initialize ROS 2
     rclcpp::init(argc, argv);
-
-    // Create a node
-    auto node = std::make_shared<STLMonitor>();
-
-    // Spin the node (run the event loop)
-    rclcpp::spin(node);
-
-    // Shutdown ROS 2
+    rclcpp::spin(std::make_shared<STLMonitor>());
     rclcpp::shutdown();
     return 0;
 }

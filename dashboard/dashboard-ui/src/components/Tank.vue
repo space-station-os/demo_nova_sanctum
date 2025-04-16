@@ -3,13 +3,14 @@
     <div class="tank-header">{{ label }}</div>
     <div class="tank-body">
       <div
-        class="tank-fill"
-        :style="{ height: co2Height + '%', backgroundColor: '#00bcd4' }"
+        class="contaminants-layer"
+        :style="{ height: contaminantsHeight + '%' }"
       ></div>
       <div
         class="moisture-layer"
         :style="{ height: moistureHeight + '%' }"
       ></div>
+      <div class="co2-layer" :style="{ height: co2Height + '%' }"></div>
     </div>
     <div class="tank-readout">
       <p><strong>CO₂:</strong> {{ co2.toFixed(2) }} g</p>
@@ -24,13 +25,17 @@ export default {
   name: "Ars-Tank",
   props: ["label", "co2", "moisture", "contaminants", "capacity"],
   computed: {
+    totalContent() {
+      return this.co2 + this.moisture + this.contaminants;
+    },
     co2Height() {
-      const total = this.co2 + this.moisture + this.contaminants;
-      return Math.min((this.co2 / total) * 100, 100);
+      return Math.min((this.co2 / this.totalContent) * 100, 100);
     },
     moistureHeight() {
-      const total = this.co2 + this.moisture + this.contaminants;
-      return Math.min((this.moisture / total) * 100, 100);
+      return Math.min((this.moisture / this.totalContent) * 100, 100);
+    },
+    contaminantsHeight() {
+      return Math.min((this.contaminants / this.totalContent) * 100, 100);
     },
   },
 };
@@ -61,21 +66,34 @@ export default {
   background: #dcdcdc;
 }
 
-.tank-fill {
+.co2-layer {
   position: absolute;
   bottom: 0;
   width: 100%;
+  background-color: #ffd700; /* Yellow */
+  opacity: 0.85;
   transition: height 0.5s ease-in-out;
-  background-color: #00bcd4;
-  opacity: 0.9;
+  z-index: 3;
 }
 
 .moisture-layer {
   position: absolute;
   bottom: 0;
   width: 100%;
-  background: rgba(173, 216, 230, 0.4);
+  background-color: #00bfff; /* Blue */
+  opacity: 0.6;
   transition: height 0.5s ease-in-out;
+  z-index: 2;
+}
+
+.contaminants-layer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  background-color: #32cd32; /* Green */
+  opacity: 0.5;
+  transition: height 0.5s ease-in-out;
+  z-index: 1;
 }
 
 .tank-readout {

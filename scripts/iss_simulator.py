@@ -16,7 +16,6 @@ class ISSParameterSimulator(Node):
             'air_collector',
             'desiccant_bed_1',
             'desiccant_bed_2'
-
         ]
 
     def set_parameter_on_node(self, node_name, param_name, param_value, param_type):
@@ -42,11 +41,11 @@ class ISSParameterSimulator(Node):
         for node in self.target_nodes:
             for name, (value, param_type) in param_set.items():
                 self.set_parameter_on_node(node, name, value, param_type)
-                self.get_logger().info(f"✔️ {node}: {name} = {value}")
+                # self.get_logger().info(f"✔️ {node}: {name} = {value}")
 
     def simulate_day_night_cycle(self):
-        for cycle in range(3):
-            self.get_logger().info(f"🌞 Day {cycle+1} cycle")
+        for cycle in range(6):
+            self.get_logger().info(f"==================== 🌞 START OF ISS DAY {cycle + 1} ====================")
 
             day_params = {
                 "mode_of_operation": ("exercise", ParameterType.PARAMETER_STRING),
@@ -63,7 +62,7 @@ class ISSParameterSimulator(Node):
             self.update_all("exercise", day_params)
             time.sleep(15)
 
-            self.get_logger().info(f"🌙 Night {cycle+1} cycle")
+            self.get_logger().info(f"==================== 🌙 START OF ISS NIGHT {cycle + 1} ====================")
 
             night_params = {
                 "mode_of_operation": ("standby", ParameterType.PARAMETER_STRING),
