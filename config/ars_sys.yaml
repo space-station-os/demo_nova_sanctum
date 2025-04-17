@@ -11,7 +11,7 @@ air_collector_node:
     system_name: "demo_nova_sanctum"
     mode_of_operation: "standby"
 
-    co2_threshold: 500.0
+    co2_threshold: 100.0
     moisture_threshold: 70.0
     contaminants_threshold: 30.0
 
@@ -42,10 +42,12 @@ air_collector_node:
     temperature_tolerance: 30.0
     kp: 0.6
     kd: 0.15
-    co2_adsorption_rate_constant: 0.015  # Langmuir k_ads
+    co2_adsorption_rate_constant: 0.15  # Langmuir k_ads
     co2_capacity: 850.0  # Total CO₂ adsorption capacity
+    tank_capacity: 500.0  # Tank capacity in grams
 
+    mode_of_operation: "standby"
 /adsorbent_bed_2:
   ros__parameters:
     desorption_temperature: 400.0
-    co2_desorption_rate_constant: 0.05  # Langmuir desorption rate
+    co2_desorption_rate_constant: 3.5  # Langmuir desorption rate

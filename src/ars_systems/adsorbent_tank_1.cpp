@@ -13,6 +13,8 @@ AdsorbentBed1::AdsorbentBed1()
   this->declare_parameter("temperature_tolerance", 30.0);
   this->declare_parameter("kp", 0.6);
   this->declare_parameter("kd", 0.15);
+  this->declare_parameter("tank_capacity", 500.0);
+  this->declare_parameter("mode_of_operation", "standby");
 
   bed1_service_ = this->create_service<demo_nova_sanctum::srv::CrewQuarters>(
     "/adsorbent_bed1",
@@ -42,6 +44,7 @@ void AdsorbentBed1::handle_request(
   co2_ = request->co2_mass;
   moisture_ = request->moisture_content;
   contaminants_ = request->contaminants;
+  co2_buffer_ = 0.0; // Reset buffer for fresh batch
 
   RCLCPP_INFO(this->get_logger(), "Received air for adsorption: CO₂=%.2f g, Moisture=%.2f%%, Contaminants=%.2f%%",
               co2_, moisture_, contaminants_);
@@ -55,7 +58,6 @@ void AdsorbentBed1::process_adsorption()
 {
   std::lock_guard<std::mutex> lock(data_mutex_);
 
-  // Step 1: Adjust Langmuir constant based on mode
   std::string mode;
   this->get_parameter("mode_of_operation", mode);
 
@@ -68,15 +70,15 @@ void AdsorbentBed1::process_adsorption()
     {"eva_repair", 0.022}
   };
 
-  double k_ads = k_ads_map.count(mode) ? k_ads_map.at(mode) : 0.010;  // fallback default
+  double k_ads = k_ads_map.count(mode) ? k_ads_map.at(mode) : 0.010;
   double C_max, T_target, T_tol, kp, kd;
   this->get_parameter("co2_capacity", C_max);
   this->get_parameter("desired_temperature", T_target);
   this->get_parameter("temperature_tolerance", T_tol);
   this->get_parameter("kp", kp);
   this->get_parameter("kd", kd);
+  this->get_parameter("tank_capacity", tank_capacity_);
 
-  // PD Temperature Control
   double error = T_target - temperature_;
   double derivative = error - previous_error_;
   double control = kp * error + kd * derivative;
@@ -88,7 +90,6 @@ void AdsorbentBed1::process_adsorption()
     return;
   }
 
-  // Step 2: Langmuir adsorption using dynamic k_ads
   double delta_q = (C_max - co2_buffer_) * (k_ads * co2_ / (1.0 + k_ads * co2_));
   delta_q = std::min(delta_q, co2_);
   co2_ -= delta_q;
@@ -97,11 +98,10 @@ void AdsorbentBed1::process_adsorption()
   RCLCPP_INFO(this->get_logger(), "[Bed 1] Mode: %s | k_ads: %.3f | Adsorbed %.5f g | Remaining: %.2f g | Buffer: %.2f g",
               mode.c_str(), k_ads, delta_q, co2_, co2_buffer_);
 
-  // Publish air status
   auto msg = demo_nova_sanctum::msg::AirData();
   msg.header.stamp = this->get_clock()->now();
   msg.header.frame_id = "adsorbent_bed_1";
-  msg.co2_mass = delta_q;
+  msg.co2_mass = co2_buffer_;
   msg.moisture_content = moisture_;
   msg.contaminants = contaminants_;
   air_quality_publisher_->publish(msg);
@@ -141,7 +141,6 @@ void AdsorbentBed1::process_adsorption()
     }
   }
 }
-
 
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);

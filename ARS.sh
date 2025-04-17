@@ -49,6 +49,7 @@ tmux send-keys -t $SESSION:1 'source ~/ros2ws/install/setup.bash && ros2 launch 
 tmux new-window -t $SESSION:2 -n 'STL_Monitor'
 tmux send-keys -t $SESSION:2 'source ~/ros2ws/install/setup.bash && ros2 run demo_nova_sanctum safety' C-m
 
+sleep(10)
 # 3. ISS Simulator
 tmux new-window -t $SESSION:3 -n 'Simulator'
 tmux send-keys -t $SESSION:3 'source ~/ros2ws/install/setup.bash && ros2 run demo_nova_sanctum iss_simulator.py' C-m

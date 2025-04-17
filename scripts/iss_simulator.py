@@ -23,25 +23,27 @@ class ISSParameterSimulator(Node):
         if not client.wait_for_service(timeout_sec=2.0):
             self.get_logger().warn(f"❌ {node_name} service unavailable.")
             return
+
         request = SetParameters.Request()
         ros_param = ROSParam()
         ros_param.name = param_name
         ros_param.value = ParameterValue(type=param_type)
+
         if param_type == ParameterType.PARAMETER_STRING:
             ros_param.value.string_value = param_value
         elif param_type == ParameterType.PARAMETER_DOUBLE:
             ros_param.value.double_value = param_value
         elif param_type == ParameterType.PARAMETER_INTEGER:
             ros_param.value.integer_value = param_value
+
         request.parameters = [ros_param]
         future = client.call_async(request)
         rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
 
-    def update_all(self, mode, param_set):
+    def update_all(self, param_set):
         for node in self.target_nodes:
             for name, (value, param_type) in param_set.items():
                 self.set_parameter_on_node(node, name, value, param_type)
-                # self.get_logger().info(f"✔️ {node}: {name} = {value}")
 
     def simulate_day_night_cycle(self):
         for cycle in range(6):
@@ -59,7 +61,7 @@ class ISSParameterSimulator(Node):
                 "desired_temperature": (440.0, ParameterType.PARAMETER_DOUBLE),
                 "co2_desorption_rate_constant": (0.06, ParameterType.PARAMETER_DOUBLE),
             }
-            self.update_all("exercise", day_params)
+            self.update_all(day_params)
             time.sleep(15)
 
             self.get_logger().info(f"==================== 🌙 START OF ISS NIGHT {cycle + 1} ====================")
@@ -76,7 +78,7 @@ class ISSParameterSimulator(Node):
                 "desired_temperature": (410.0, ParameterType.PARAMETER_DOUBLE),
                 "co2_desorption_rate_constant": (0.045, ParameterType.PARAMETER_DOUBLE),
             }
-            self.update_all("standby", night_params)
+            self.update_all(night_params)
             time.sleep(15)
 
 def main():

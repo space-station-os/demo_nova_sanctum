@@ -35,6 +35,7 @@ private:
   double temperature_ = 300.0;
   double previous_error_ = 0.0;
   bool is_active_;
+  double tank_capacity_;
 };
 
 /**
@@ -63,7 +64,7 @@ private:
   double temperature_ = 300.0;
   bool is_active_;
   bool has_heated_;
-
+  
 };
 
 #endif  // DEMO_NOVA_SANCTUM_ADSORBENT_TANK_HPP_

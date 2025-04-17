@@ -11,10 +11,10 @@ using namespace std::chrono_literals;
 
 STLMonitor::STLMonitor() : Node("stl_monitor")
 {
-    bounds_["collector"] = {0.0, 197.09};
+    bounds_["collector"] = {0.0, 98.89};
     bounds_["desiccant_moisture"] = {0.0, 153.21};
     bounds_["desiccant_contaminants"] = {0.0, 35.08};
-    bounds_["adsorbent"] = {0.0, 123.61};
+    bounds_["adsorbent"] = {100.81, 114.51};
 
     violation_counters_ = {
         {"collector", 0}, {"desiccant_moisture", 0}, {"desiccant_contaminants", 0}, {"adsorbent", 0}
@@ -89,7 +89,7 @@ void STLMonitor::checkSignal(const std::string& label, const std::string& key, d
         recovery_counters_[key] = 0;
         violation_counters_[key]++;
 
-        if (violation_counters_[key] > 10) {
+        if (violation_counters_[key] > 6) {
             new_status = "CODE_RED";
             if (system_state_[key] != "CODE_RED") {
                 publishCrewAlert(label, value);
