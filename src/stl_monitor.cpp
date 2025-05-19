@@ -14,7 +14,7 @@ STLMonitor::STLMonitor() : Node("stl_monitor")
     bounds_["collector"] = {0.0, 98.89};
     bounds_["desiccant_moisture"] = {0.0, 153.21};
     bounds_["desiccant_contaminants"] = {0.0, 35.08};
-    bounds_["adsorbent"] = {100.81, 114.51};
+    bounds_["adsorbent"] = {0.0, 114.51};
 
     violation_counters_ = {
         {"collector", 0}, {"desiccant_moisture", 0}, {"desiccant_contaminants", 0}, {"adsorbent", 0}
