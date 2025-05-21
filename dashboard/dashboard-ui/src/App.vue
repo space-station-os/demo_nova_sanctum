@@ -1,166 +1,55 @@
 <template>
-  <div :style="backgroundStyle">
-    <h1>🛰️ ISS Air Revitalization Dashboard</h1>
-
-    <StatusHUD
-      :status="mainStatus"
-      :mode="systemMode"
-      :temperature="temperature"
-      :pressure="pressure"
-      :stlStatus="stlStatus"
-    />
-
-    <div class="dashboard-layout">
-      <Tank
-        label="Air Collector"
-        :co2="co2_mass"
-        :moisture="moisture_content"
-        :contaminants="contaminants"
-        :capacity="1000"
-      />
-
-      <Pipe />
-
-      <Tank
-        label="Desiccant Bed"
-        :co2="desiccant_co2"
-        :moisture="desiccant_moisture"
-        :contaminants="desiccant_contaminants"
-        :capacity="1000"
-      />
-
-      <Pipe />
-
-      <Tank
-        label="Adsorbent Bed"
-        :co2="adsorbent_co2"
-        :moisture="adsorbent_moisture"
-        :contaminants="adsorbent_contaminants"
-        :capacity="1000"
-      />
+  <div>
+    <div class="top-bar">
+      <select v-model="selectedSystem" @change="navigate">
+        <option value="/ars">Air Revitalization (ARS)</option>
+        <option value="/ogs">Oxygen Generation (OGS)</option>
+        <option value="/water">Water Recovery System (WRS)</option>
+        <!-- Future: <option value="/wrs">Water Recovery (WRS)</option> -->
+      </select>
     </div>
-  </div>
 
-  <EmergencyPopup :show="emergencyActive" @dismiss="emergencyActive = false" />
+    <router-view />
+  </div>
 </template>
 
 <script>
-/* global ROSLIB */
-import Tank from "./components/Tank.vue";
-import Pipe from "./components/Pipe.vue";
-import StatusHUD from "./components/StatusHUD.vue";
-import EmergencyPopup from "./components/Emergency_popup.vue";
-
 export default {
-  components: { Tank, Pipe, StatusHUD, EmergencyPopup },
   data() {
     return {
-      ros: null,
-      co2_mass: 0,
-      moisture_content: 0,
-      contaminants: 0,
-      desiccant_co2: 0,
-      desiccant_moisture: 0,
-      desiccant_contaminants: 0,
-      adsorbent_co2: 0,
-      adsorbent_moisture: 0,
-      adsorbent_contaminants: 0,
-      imgUrl: "/assets/iss_bg.jpg",
-      mainStatus: "Nominal",
-      systemMode: "Idle",
-      temperature: 72.0,
-      pressure: 14.5,
-      stlStatus: {
-        collector: "PASS",
-        desiccant_moisture: "PASS",
-        desiccant_contaminants: "PASS",
-        adsorbent: "PASS",
-      },
-      emergencyActive: false,
+      selectedSystem: "/ars",
     };
   },
-  computed: {
-    backgroundStyle() {
-      return {
-        backgroundImage: `url(${this.imgUrl})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-        minHeight: "100vh",
-        paddingTop: "20px",
-      };
+  methods: {
+    navigate() {
+      this.$router.push(this.selectedSystem);
     },
   },
   mounted() {
-    this.ros = new ROSLIB.Ros({ url: "ws://localhost:9090" });
-
-    const subscribeTopic = (topic, cb) => {
-      const sub = new ROSLIB.Topic({
-        ros: this.ros,
-        name: topic,
-        messageType: "demo_nova_sanctum/msg/AirData",
-      });
-      sub.subscribe(cb);
-    };
-
-    subscribeTopic("/collector_air_quality", (msg) => {
-      this.co2_mass = msg.co2_mass;
-      this.moisture_content = msg.moisture_content;
-      this.contaminants = msg.contaminants;
-    });
-
-    subscribeTopic("/desiccant_air_quality", (msg) => {
-      this.desiccant_co2 = msg.co2_mass;
-      this.desiccant_moisture = msg.moisture_content;
-      this.desiccant_contaminants = msg.contaminants;
-    });
-
-    subscribeTopic("/adsorbent_air_quality", (msg) => {
-      this.adsorbent_co2 = msg.co2_mass;
-      this.adsorbent_moisture = msg.moisture_content;
-      this.adsorbent_contaminants = msg.contaminants;
-    });
-
-    const stlListener = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/stl_monitor/status",
-      messageType: "std_msgs/String",
-    });
-
-    stlListener.subscribe((msg) => {
-      try {
-        const parsed = JSON.parse(msg.data);
-        this.stlStatus = parsed;
-
-        // Check for CODE_RED
-        const values = Object.values(parsed);
-        if (values.includes("CODE_RED")) {
-          this.emergencyActive = true;
-        }
-      } catch (e) {
-        console.error("Failed to parse STL monitor status:", e);
-      }
-    });
+    this.selectedSystem = this.$route.path;
   },
 };
 </script>
 
 <style scoped>
-h1 {
-  text-align: center;
-  color: #ffffff;
-  text-shadow: 1px 1px 4px #000;
-  font-size: 2.2rem;
-  margin-bottom: 20px;
-  font-weight: 600;
+.top-bar {
+  position: fixed;
+  top: 30px;
+  left: 10px;
+  z-index: 999;
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: 0 0 5px black;
 }
 
-.dashboard-layout {
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  gap: 50px;
-  margin-top: 20px;
-  flex-wrap: wrap;
+select {
+  font-size: 0.9rem;
+  padding: 6px 10px;
+  background-color: #fff;
+  color: #000;
+  border-radius: 4px;
+  border: none;
+  outline: none;
 }
 </style>

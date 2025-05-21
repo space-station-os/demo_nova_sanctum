@@ -3,16 +3,24 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include "demo_nova_sanctum/srv/upa.hpp"
+#include "std_msgs/msg/float64.hpp"  
 
 class WHCWasteTank : public rclcpp::Node {
 public:
     WHCWasteTank();
 
 private:
+    // Service client
     rclcpp::Client<demo_nova_sanctum::srv::Upa>::SharedPtr upa_client_;
+
+    // Timers
     rclcpp::TimerBase::SharedPtr retry_timer_;
     rclcpp::TimerBase::SharedPtr urine_collection_timer_;
 
+    // New Sabatier water subscriber
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sabatier_water_sub_; 
+
+    // State variables
     double urine_volume_;
     double pretreatment_volume_;
     double flush_volume_;
@@ -21,10 +29,14 @@ private:
     double processing_threshold_;
     bool upa_available_;
 
+    // Methods
     void simulate_urine_collection();
     void process_waste_transfer();
     void process_urine_response(rclcpp::Client<demo_nova_sanctum::srv::Upa>::SharedFuture future);
     void retry_process_waste_transfer();
+
+
+    void receive_sabatier_water(const std_msgs::msg::Float64::SharedPtr msg);
 };
 
 #endif // WHC_WASTE_TANK_HPP

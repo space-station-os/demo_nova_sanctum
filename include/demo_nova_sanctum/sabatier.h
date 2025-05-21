@@ -4,8 +4,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include "demo_nova_sanctum/msg/sabatier.hpp"
 #include "demo_nova_sanctum/msg/air_data.hpp"
-#include "std_msgs/msg/float64.hpp"
 #include "demo_nova_sanctum/msg/electrolysis.hpp"
+#include "std_msgs/msg/float64.hpp"  // ✅ Needed for /sabatier_output_water
 #include <chrono>
 #include <memory>
 #include <string>
@@ -26,29 +26,28 @@ private:
   double pid_pressure(double desired, double current);
   double pd_ghsv(double desired, double current); 
   
-  
   // Air mixture parameters
-  double co2_mass_;              // Current CO2 mass in grams
-  double h2_mass_;               // Current H2 mass in grams
-  double moisture_content_;      // Moisture content in percentage
-  double contaminants_;          // Contaminants in percentage
-  double dew_point_;             // Dew Point in Celsius
-  double total_air_mass_;        // Total air mass in grams
+  double co2_mass_;
+  double h2_mass_;
+  double moisture_content_;
+  double contaminants_;
+  double dew_point_;
+  double total_air_mass_;
 
   // Sabatier reaction parameters
-  double reactor_temp_;          // Current reactor temperature in Celsius
-  double desired_temp_;          // Desired reactor temperature in Celsius
-  double reactor_pressure_;      // Current reactor pressure in psi
-  double desired_pressure_;      // Desired reactor pressure in psi
-  double h2_co2_ratio_;          // H2/CO2 molar ratio
-  double ghsv_;                  // Gas Hourly Space Velocity (hr^-1)
-  double desired_ghsv_;          // Desired Gas Hourly Space Velocity (hr^-1)
-  double total_inlet_flow_;      // Total inlet flow rate (slpm)
-  double methane_yield_;         // Methane yield in grams
-  double water_yield_;           // Water yield in grams
-  double reaction_efficiency_;   // Reaction efficiency in percentage
+  double reactor_temp_;
+  double desired_temp_;
+  double reactor_pressure_;
+  double desired_pressure_;
+  double h2_co2_ratio_;
+  double ghsv_;
+  double desired_ghsv_;
+  double total_inlet_flow_;
+  double methane_yield_;
+  double water_yield_;
+  double reaction_efficiency_;
 
-  
+  // PID control variables
   double temp_integral_;
   double temp_previous_error_;
   double pressure_integral_;
@@ -70,11 +69,12 @@ private:
   double ghsv_kd_;
 
   // System states
-  bool reactor_state_;           // Whether the reactor is active
-  bool valve_state_;             // Whether the valve is open or closed
+  bool reactor_state_;
+  bool valve_state_;
 
   // ROS publishers, subscribers, and timers
   rclcpp::Publisher<demo_nova_sanctum::msg::Sabatier>::SharedPtr sabatier_publisher_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr water_output_pub_;  // ✅ NEW
   rclcpp::Subscription<demo_nova_sanctum::msg::Electrolysis>::SharedPtr hydrogen_subscriber_;
   rclcpp::Subscription<demo_nova_sanctum::msg::AirData>::SharedPtr ars_subscriber_;
   rclcpp::TimerBase::SharedPtr timer_;
