@@ -1,15 +1,39 @@
 import { createRouter, createWebHistory } from "vue-router";
+import HomePage from "../pages/Home.vue";
 import Ars from "../pages/Ars.vue";
 import Oxygen from "../pages/Oxygen.vue";
-import WaterSystemsPage from "../pages/Waterrecovery.vue";
+import Water from "../pages/Waterrecovery.vue";
+
 const routes = [
-  { path: "/", redirect: "/ars" },
-  { path: "/ars", name: "ARS", component: Ars },
-  { path: "/ogs", name: "OGS", component: Oxygen },
-  { path: "/water", component: WaterSystemsPage },
+  {
+    path: "/",
+    name: "Home",
+    component: HomePage,
+  },
+  {
+    path: "/ars",
+    name: "ARS",
+    component: Ars,
+  },
+  {
+    path: "/ogs",
+    name: "OGS",
+    component: Oxygen,
+  },
+  {
+    path: "/water",
+    name: "WRS",
+    component: Water,
+  },
+  {
+    path: "/:catchAll(.*)",
+    redirect: "/",
+  },
 ];
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes,
 });
+
+export default router;

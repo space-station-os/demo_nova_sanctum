@@ -11,33 +11,39 @@
     />
 
     <div class="dashboard-layout">
-      <Tank
-        label="Air Collector"
-        :co2="co2_mass"
-        :moisture="moisture_content"
-        :contaminants="contaminants"
-        :capacity="1000"
-      />
+      <TankCard title="Air Collector">
+        <Tank
+          type="ars"
+          :co2="co2_mass"
+          :moisture="moisture_content"
+          :contaminants="contaminants"
+          :capacity="1000"
+        />
+      </TankCard>
 
       <Pipe />
 
-      <Tank
-        label="Desiccant Bed"
-        :co2="desiccant_co2"
-        :moisture="desiccant_moisture"
-        :contaminants="desiccant_contaminants"
-        :capacity="1000"
-      />
+      <TankCard title="Desiccant Bed">
+        <Tank
+          type="ars"
+          :co2="desiccant_co2"
+          :moisture="desiccant_moisture"
+          :contaminants="desiccant_contaminants"
+          :capacity="1000"
+        />
+      </TankCard>
 
       <Pipe />
 
-      <Tank
-        label="Adsorbent Bed"
-        :co2="adsorbent_co2"
-        :moisture="adsorbent_moisture"
-        :contaminants="adsorbent_contaminants"
-        :capacity="1000"
-      />
+      <TankCard title="Adsorbent Bed">
+        <Tank
+          type="ars"
+          :co2="adsorbent_co2"
+          :moisture="adsorbent_moisture"
+          :contaminants="adsorbent_contaminants"
+          :capacity="1000"
+        />
+      </TankCard>
     </div>
 
     <EmergencyPopup
@@ -53,9 +59,10 @@ import Tank from "../components/Tank.vue";
 import Pipe from "../components/Pipe.vue";
 import StatusHUD from "../components/StatusHUD.vue";
 import EmergencyPopup from "../components/Emergency_popup.vue";
+import TankCard from "../components/TankCard.vue";
 
 export default {
-  components: { Tank, Pipe, StatusHUD, EmergencyPopup },
+  components: { Tank, Pipe, StatusHUD, EmergencyPopup, TankCard },
   name: "ArsSystem",
   data() {
     return {
@@ -160,8 +167,8 @@ h1 {
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  gap: 50px;
-  margin-top: 20px;
+  gap: 30px;
+  margin-top: 30px;
   flex-wrap: wrap;
 }
 </style>

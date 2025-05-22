@@ -11,21 +11,15 @@
     />
 
     <div class="ogs-layout">
-      <Tank
-        label="Electrolysis Unit"
-        type="ogs"
-        :oxygen="o2"
-        :hydrogen="h2"
-        :capacity="100"
-      />
+      <TankCard title="Electrolysis Unit">
+        <Tank type="ogs" :oxygen="o2" :hydrogen="h2" :capacity="100" />
+      </TankCard>
+
       <Pipe />
-      <Tank
-        label="Oxygen Outlet"
-        type="ogs"
-        :oxygen="o2"
-        :hydrogen="0"
-        :capacity="100"
-      />
+
+      <TankCard title="Oxygen Outlet">
+        <Tank type="ogs" :oxygen="o2" :hydrogen="0" :capacity="100" />
+      </TankCard>
     </div>
   </div>
 </template>
@@ -34,11 +28,12 @@
 /* global ROSLIB */
 import Tank from "../components/Tank.vue";
 import Pipe from "../components/Pipe.vue";
+import TankCard from "../components/TankCard.vue";
 import StatusHUD from "../components/StatusHUD.vue";
 
 export default {
   name: "OxygenSystem",
-  components: { Tank, Pipe, StatusHUD },
+  components: { Tank, Pipe, TankCard, StatusHUD },
   data() {
     return {
       ros: null,
@@ -106,7 +101,7 @@ h1 {
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  gap: 40px;
+  gap: 30px;
   margin-top: 30px;
   flex-wrap: wrap;
 }

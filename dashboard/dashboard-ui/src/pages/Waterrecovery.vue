@@ -1,80 +1,86 @@
 <template>
-  <div :style="backgroundStyle">
-    <h1>💧 ISS Water Recovery System</h1>
+  <div class="wrs-wrapper">
+    <h1>💧 Water Recovery System</h1>
 
-    <StatusHUD
-      :status="mainStatus"
-      :mode="systemMode"
-      :temperature="temperature"
-      :pressure="pressure"
-      :stlStatus="stlStatus"
-    />
-
-    <div class="pipeline-layout">
-      <Tank
-        label="WHC"
-        type="wrs"
-        :water="crewUse.moisture"
-        :contaminants="crewUse.contaminants"
-        :capacity="100"
+    <!-- STATUS CARDS -->
+    <div class="status-grid">
+      <StatusCard title="System Health" :value="mainStatus" delta="+5%" />
+      <StatusCard
+        title="Recovery Rate"
+        :value="`${recoveryRate}%`"
+        delta="+2%"
       />
-      <Pipe />
-
-      <Tank
-        label="Waste Collection"
-        type="wrs"
-        :water="wasteStatus.level"
-        :capacity="100"
-      />
-      <Pipe />
-
-      <Tank
-        label="UPA"
-        type="wrs"
-        :water="upaStatus.distillate"
-        :contaminants="upaStatus.brine"
-        :capacity="100"
-      />
-      <Pipe />
-
-      <Tank
-        label="Filtration Unit"
-        type="wrs"
-        :water="filterationStatus.filtered_output"
-        :capacity="100"
-      />
-      <Pipe />
-
-      <Tank
-        label="Ionization Bed"
-        type="wrs"
-        :water="ionStatus.cleaned_output"
-        :iodine="ionStatus.iodine"
-        :contaminants="ionStatus.contaminants"
-        :capacity="100"
-      />
-      <Pipe />
-
-      <Tank
-        label="Catalytic Chamber"
-        type="wrs"
-        :water="cleanStatus.pure_water"
-        :capacity="100"
-      />
-      <Pipe />
-
-      <Tank
-        label="Product Water Tank"
-        type="wrs"
-        :water="finalWater.level"
-        :iodine="finalWater.iodine"
-        :contaminants="finalWater.contaminants"
-        :capacity="100"
+      <StatusCard
+        title="Tank Level"
+        :value="`${finalWater.level}%`"
+        delta="-10%"
       />
     </div>
 
-    <div class="controls">
-      <button @click="fetchSystemStatus">🔍 Get Water System Status</button>
+    <!-- TANK LEVEL BAR -->
+    <div class="level-bar">
+      <label>Water Tank Level</label>
+      <div class="bar-wrapper">
+        <div class="bar-fill" :style="{ width: `${finalWater.level}%` }"></div>
+        <span class="bar-label">{{ finalWater.level.toFixed(1) }}%</span>
+      </div>
+    </div>
+
+    <!-- PIPELINE VISUALIZATION -->
+    <div class="pipeline-layout">
+      <TankCard title="WHC">
+        <Tank
+          type="wrs"
+          :water="crewUse.moisture"
+          :contaminants="crewUse.contaminants"
+          :capacity="100"
+        />
+      </TankCard>
+      <Pipe />
+      <TankCard title="Waste Collection">
+        <Tank type="wrs" :water="wasteStatus.level" :capacity="100" />
+      </TankCard>
+      <Pipe />
+      <TankCard title="UPA">
+        <Tank
+          type="wrs"
+          :water="upaStatus.distillate"
+          :contaminants="upaStatus.brine"
+          :capacity="100"
+        />
+      </TankCard>
+      <Pipe />
+      <TankCard title="Filtration Unit">
+        <Tank
+          type="wrs"
+          :water="filterationStatus.filtered_output"
+          :capacity="100"
+        />
+      </TankCard>
+      <Pipe />
+      <TankCard title="Ionization Bed">
+        <Tank
+          type="wrs"
+          :water="ionStatus.cleaned_output"
+          :iodine="ionStatus.iodine"
+          :contaminants="ionStatus.contaminants"
+          :capacity="100"
+        />
+      </TankCard>
+      <Pipe />
+      <TankCard title="Catalytic Chamber">
+        <Tank type="wrs" :water="cleanStatus.pure_water" :capacity="100" />
+      </TankCard>
+      <Pipe />
+      <TankCard title="Product Water Tank">
+        <Tank
+          type="wrs"
+          :water="finalWater.level"
+          :iodine="finalWater.iodine"
+          :contaminants="finalWater.contaminants"
+          :capacity="100"
+        />
+      </TankCard>
     </div>
   </div>
 </template>
@@ -83,11 +89,12 @@
 /* global ROSLIB */
 import Tank from "../components/Tank.vue";
 import Pipe from "../components/Pipe.vue";
-import StatusHUD from "../components/StatusHUD.vue";
+import TankCard from "../components/TankCard.vue";
+import StatusCard from "../components/StatusCard.vue";
 
 export default {
   name: "WaterSystemsPage",
-  components: { Tank, Pipe, StatusHUD },
+  components: { Tank, Pipe, TankCard, StatusCard },
   data() {
     return {
       ros: null,
@@ -98,36 +105,14 @@ export default {
       ionStatus: { cleaned_output: 0, iodine: 0, contaminants: 0 },
       cleanStatus: { pure_water: 0 },
       finalWater: { level: 0, iodine: 0, contaminants: 0 },
-      imgUrl: "/assets/iss_bg.jpg",
-      mainStatus: "Nominal",
-      systemMode: "Recycle",
-      temperature: 22.0,
-      pressure: 14.7,
-      stlStatus: {
-        WHC: "PASS",
-        UPA: "PASS",
-        FILTER: "PASS",
-        IONIZATION: "PASS",
-        CATALYTIC: "PASS",
-      },
+      mainStatus: "Operational",
+      recoveryRate: 95,
     };
-  },
-  computed: {
-    backgroundStyle() {
-      return {
-        backgroundImage: `url(${this.imgUrl})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-        minHeight: "100vh",
-        paddingTop: "20px",
-      };
-    },
   },
   mounted() {
     this.ros = new ROSLIB.Ros({ url: "ws://localhost:9090" });
 
-    // ✅ Live Topic: Product Water Tank
+    // Final Tank
     const tankStatusSub = new ROSLIB.Topic({
       ros: this.ros,
       name: "/wpa/tank_status",
@@ -141,7 +126,7 @@ export default {
       };
     });
 
-    // ✅ Live Topic: Ionization Bed
+    // Ionization Bed
     const ionStatusSub = new ROSLIB.Topic({
       ros: this.ros,
       name: "/ionization/status",
@@ -154,83 +139,123 @@ export default {
         contaminants: msg.contaminants,
       };
     });
-  },
-  methods: {
-    async callService(serviceName, type) {
-      return new Promise((resolve, reject) => {
-        const service = new ROSLIB.Service({
-          ros: this.ros,
-          name: serviceName,
-          serviceType: type,
-        });
-        service.callService(
-          new ROSLIB.ServiceRequest(),
-          (res) => resolve(res),
-          (err) => reject(err)
-        );
-      });
-    },
-    async fetchSystemStatus() {
-      try {
-        const crew = await this.callService(
-          "/wpa/dispense_water",
-          "demo_nova_sanctum/srv/Water"
-        );
-        const waste = await this.callService(
-          "/waste_collector/get_parameters",
-          "demo_nova_sanctum/srv/Water"
-        );
-        const upa = await this.callService(
-          "/upa/process_urine",
-          "demo_nova_sanctum/srv/Upa"
-        );
-        const filt = await this.callService(
-          "/wpa/filtered_water",
-          "demo_nova_sanctum/srv/Filteration"
-        );
-        const cat = await this.callService(
-          "/wpa/catalytic_reactor",
-          "demo_nova_sanctum/srv/CleanWater"
-        );
 
-        console.log("[CREW]", crew);
-        console.log("[WASTE]", waste);
-        console.log("[UPA]", upa);
-        console.log("[FILTER]", filt);
-        console.log("[CAT]", cat);
+    // WHC
+    const whcSub = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/whc/status",
+      messageType: "demo_nova_sanctum/msg/WaterCrew",
+    });
+    whcSub.subscribe((msg) => {
+      this.crewUse = {
+        moisture: msg.water,
+        contaminants: msg.contaminants,
+      };
+    });
 
-        this.crewUse = {
-          moisture: crew?.moisture ?? 0,
-          contaminants: crew?.contaminants ?? 0,
-        };
-        this.wasteStatus = { level: waste?.volume ?? 0 };
-        this.upaStatus = {
-          distillate: upa?.distillate ?? 0,
-          brine: upa?.brine ?? 0,
-        };
-        this.filterationStatus = {
-          filtered_output: filt?.filtered_output ?? 0,
-        };
-        this.cleanStatus = {
-          pure_water: cat?.pure_water ?? 0,
-        };
-      } catch (err) {
-        console.error("❌ Service call failed:", err);
-      }
-    },
+    // Waste Collection
+    const wasteSub = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/waste_collection/status",
+      messageType: "demo_nova_sanctum/msg/WaterCrew",
+    });
+    wasteSub.subscribe((msg) => {
+      this.wasteStatus = {
+        level: msg.water,
+      };
+    });
+
+    // UPA
+    const upaSub = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/upa/status",
+      messageType: "demo_nova_sanctum/msg/WaterCrew",
+    });
+    upaSub.subscribe((msg) => {
+      this.upaStatus = {
+        distillate: msg.water,
+        brine: msg.contaminants,
+      };
+    });
+
+    // Filtration Unit
+    const filterSub = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/filtration/status",
+      messageType: "demo_nova_sanctum/msg/WaterCrew",
+    });
+    filterSub.subscribe((msg) => {
+      this.filterationStatus = {
+        filtered_output: msg.water,
+      };
+    });
+
+    // Catalytic Chamber
+    const catSub = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/catalytic/status",
+      messageType: "demo_nova_sanctum/msg/WaterCrew",
+    });
+    catSub.subscribe((msg) => {
+      this.cleanStatus = {
+        pure_water: msg.water,
+      };
+    });
   },
 };
 </script>
 
 <style scoped>
-h1 {
-  text-align: center;
-  color: #ffffff;
-  text-shadow: 1px 1px 4px #000;
-  font-size: 2.2rem;
-  margin-bottom: 20px;
+.wrs-wrapper {
+  background-color: #0d1117;
+  color: white;
+  padding: 40px;
 }
 
+h1 {
+  text-align: center;
+  font-size: 2.3rem;
+  margin-bottom: 40px;
+}
+
+/* Status Cards Grid */
+.status-grid {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 30px;
+}
+
+/* Tank Level Bar */
+.level-bar {
+  max-width: 600px;
+  margin: 20px auto 50px;
+}
+
+.bar-wrapper {
+  background: #333;
+  height: 14px;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  margin-top: 4px;
+}
+
+.bar-fill {
+  height: 100%;
+  background-color: #00aaff;
+  transition: width 0.5s ease-in-out;
+}
+
+.bar-label {
+  position: absolute;
+  right: 10px;
+  top: -22px;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+/* Tank Layout */
 .pipeline-layout {
   display: flex;
   justify-content: center;
@@ -238,26 +263,5 @@ h1 {
   gap: 30px;
   flex-wrap: wrap;
   margin-top: 30px;
-}
-
-.controls {
-  display: flex;
-  justify-content: center;
-  margin-top: 40px;
-}
-
-button {
-  padding: 10px 20px;
-  font-size: 1rem;
-  background-color: #0abde3;
-  border: none;
-  border-radius: 6px;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 2px 4px #00000040;
-  transition: 0.3s;
-}
-button:hover {
-  background-color: #0984e3;
 }
 </style>
