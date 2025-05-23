@@ -16,7 +16,7 @@
       >
         <option disabled value="">🌐 Select a System</option>
         <option value="ars">🌀 Air Revitalization</option>
-        <option value="wrs">💧 Water Recovery</option>
+        <option value="water">💧 Water Recovery</option>
         <option value="ogs">🧪 Oxygen Generation</option>
       </select>
     </div>

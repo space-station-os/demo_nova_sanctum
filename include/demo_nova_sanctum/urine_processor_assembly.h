@@ -4,6 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include "demo_nova_sanctum/srv/upa.hpp"
 #include "demo_nova_sanctum/srv/distillation.hpp"
+#include "demo_nova_sanctum/msg/water_crew.hpp"
 
 class UrineProcessorAssembly : public rclcpp::Node {
 public:
@@ -12,14 +13,15 @@ public:
 private:
     rclcpp::Service<demo_nova_sanctum::srv::Upa>::SharedPtr upa_service_;
     rclcpp::Client<demo_nova_sanctum::srv::Distillation>::SharedPtr wpa_client_;
-
+    rclcpp::Publisher<demo_nova_sanctum::msg::WaterCrew>::SharedPtr waste_status_pub_;
+     rclcpp::TimerBase::SharedPtr dashboard_timer_;
     bool is_processing_;       // Tracks if UPA is currently processing a batch
     double unprocessed_water_; // Stores processed water if WPA is unavailable
 
     void handle_urine_request(
         const std::shared_ptr<demo_nova_sanctum::srv::Upa::Request> request,
         std::shared_ptr<demo_nova_sanctum::srv::Upa::Response> response);
-
+    void publish_status(double water, double contaminants, double temperature);
     void simulate_distillation(double urine_volume, double &distilled_urine, double &contaminants);
     void simulate_purge_pump(double &distilled_urine);
     void send_to_wpa(double processed_water, double contaminants);

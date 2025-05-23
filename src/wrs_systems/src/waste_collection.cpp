@@ -24,8 +24,14 @@ WHCWasteTank::WHCWasteTank()
     urine_collection_timer_ = this->create_wall_timer(
         std::chrono::seconds(3),
         std::bind(&WHCWasteTank::simulate_urine_collection, this));
-
     
+    dashboard_timer_ = this->create_wall_timer(
+        std::chrono::seconds(1),
+        std::bind(&WHCWasteTank::publish_status, this));
+
+        
+    waste_status_pub_ = this->create_publisher<demo_nova_sanctum::msg::WaterCrew>("/whc/collector_status", 10);
+
     sabatier_water_sub_ = this->create_subscription<std_msgs::msg::Float64>(
         "/sabatier_output_water", 10,
         std::bind(&WHCWasteTank::receive_sabatier_water, this, std::placeholders::_1));
@@ -33,6 +39,16 @@ WHCWasteTank::WHCWasteTank()
     RCLCPP_INFO(this->get_logger(), "WHC Waste Tank Node Initialized");
 }
 
+void WHCWasteTank::publish_status() {
+    auto msg = demo_nova_sanctum::msg::WaterCrew();
+    msg.water = total_water_volume_;
+    msg.gas_bubbles = 0.0;         
+    msg.contaminants = 0.8 * total_water_volume_;  
+    msg.iodine_level = 0.02;        
+    msg.pressure = 101.3;           
+    msg.temperature = 22.5;        
+    waste_status_pub_->publish(msg);
+}
 void WHCWasteTank::simulate_urine_collection() {
     if (!upa_available_) {
         RCLCPP_WARN(this->get_logger(), "[WHC] Urine collection paused! UPA is unavailable.");

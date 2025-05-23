@@ -38,7 +38,12 @@
       </TankCard>
       <Pipe />
       <TankCard title="Waste Collection">
-        <Tank type="wrs" :water="wasteStatus.level" :capacity="100" />
+        <Tank
+          type="wrs"
+          :water="wasteStatus.level"
+          :contaminants="wasteStatus.contaminants"
+          :capacity="100"
+        />
       </TankCard>
       <Pipe />
       <TankCard title="UPA">
@@ -54,6 +59,7 @@
         <Tank
           type="wrs"
           :water="filterationStatus.filtered_output"
+          :contaminants="filterationStatus.contaminants"
           :capacity="100"
         />
       </TankCard>
@@ -69,7 +75,12 @@
       </TankCard>
       <Pipe />
       <TankCard title="Catalytic Chamber">
-        <Tank type="wrs" :water="cleanStatus.pure_water" :capacity="100" />
+        <Tank
+          type="wrs"
+          :water="cleanStatus.pure_water"
+          :contaminants="cleanStatus.contaminants"
+          :capacity="100"
+        />
       </TankCard>
       <Pipe />
       <TankCard title="Product Water Tank">
@@ -99,11 +110,11 @@ export default {
     return {
       ros: null,
       crewUse: { moisture: 0, contaminants: 0 },
-      wasteStatus: { level: 0 },
+      wasteStatus: { level: 0, contaminants: 0 },
       upaStatus: { distillate: 0, brine: 0 },
-      filterationStatus: { filtered_output: 0 },
+      filterationStatus: { filtered_output: 0, contaminants: 0 },
       ionStatus: { cleaned_output: 0, iodine: 0, contaminants: 0 },
-      cleanStatus: { pure_water: 0 },
+      cleanStatus: { pure_water: 0, contaminants: 0 },
       finalWater: { level: 0, iodine: 0, contaminants: 0 },
       mainStatus: "Operational",
       recoveryRate: 95,
@@ -112,27 +123,44 @@ export default {
   mounted() {
     this.ros = new ROSLIB.Ros({ url: "ws://localhost:9090" });
 
-    // Final Tank
-    const tankStatusSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/wpa/tank_status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
-    });
-    tankStatusSub.subscribe((msg) => {
-      this.finalWater = {
-        level: msg.water,
-        iodine: msg.iodine_level,
+    const subscribe = (name, callback) => {
+      const topic = new ROSLIB.Topic({
+        ros: this.ros,
+        name,
+        messageType: "demo_nova_sanctum/msg/WaterCrew",
+      });
+      topic.subscribe(callback);
+    };
+
+    subscribe("/whc_controller_water", (msg) => {
+      this.crewUse = {
+        moisture: msg.water,
         contaminants: msg.contaminants,
       };
     });
 
-    // Ionization Bed
-    const ionStatusSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/ionization/status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
+    subscribe("/whc/collector_status", (msg) => {
+      this.wasteStatus = {
+        level: msg.water,
+        contaminants: msg.contaminants,
+      };
     });
-    ionStatusSub.subscribe((msg) => {
+
+    subscribe("/whc/upa", (msg) => {
+      this.upaStatus = {
+        distillate: msg.water,
+        brine: msg.contaminants,
+      };
+    });
+
+    subscribe("/wpa/filteration_status", (msg) => {
+      this.filterationStatus = {
+        filtered_output: msg.water,
+        contaminants: msg.contaminants,
+      };
+    });
+
+    subscribe("/wpa/ionization_status", (msg) => {
       this.ionStatus = {
         cleaned_output: msg.water,
         iodine: msg.iodine_level,
@@ -140,65 +168,18 @@ export default {
       };
     });
 
-    // WHC
-    const whcSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/whc/status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
-    });
-    whcSub.subscribe((msg) => {
-      this.crewUse = {
-        moisture: msg.water,
+    subscribe("/wpa/catalytic_chamber", (msg) => {
+      this.cleanStatus = {
+        pure_water: msg.water,
         contaminants: msg.contaminants,
       };
     });
 
-    // Waste Collection
-    const wasteSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/waste_collection/status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
-    });
-    wasteSub.subscribe((msg) => {
-      this.wasteStatus = {
+    subscribe("/wpa/tank_status", (msg) => {
+      this.finalWater = {
         level: msg.water,
-      };
-    });
-
-    // UPA
-    const upaSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/upa/status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
-    });
-    upaSub.subscribe((msg) => {
-      this.upaStatus = {
-        distillate: msg.water,
-        brine: msg.contaminants,
-      };
-    });
-
-    // Filtration Unit
-    const filterSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/filtration/status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
-    });
-    filterSub.subscribe((msg) => {
-      this.filterationStatus = {
-        filtered_output: msg.water,
-      };
-    });
-
-    // Catalytic Chamber
-    const catSub = new ROSLIB.Topic({
-      ros: this.ros,
-      name: "/catalytic/status",
-      messageType: "demo_nova_sanctum/msg/WaterCrew",
-    });
-    catSub.subscribe((msg) => {
-      this.cleanStatus = {
-        pure_water: msg.water,
+        iodine: msg.iodine_level,
+        contaminants: msg.contaminants,
       };
     });
   },
@@ -218,7 +199,6 @@ h1 {
   margin-bottom: 40px;
 }
 
-/* Status Cards Grid */
 .status-grid {
   display: flex;
   gap: 20px;
@@ -226,7 +206,6 @@ h1 {
   margin-bottom: 30px;
 }
 
-/* Tank Level Bar */
 .level-bar {
   max-width: 600px;
   margin: 20px auto 50px;
@@ -255,7 +234,6 @@ h1 {
   color: #ccc;
 }
 
-/* Tank Layout */
 .pipeline-layout {
   display: flex;
   justify-content: center;

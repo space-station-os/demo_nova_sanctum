@@ -14,11 +14,12 @@
 
       <!-- WRS -->
       <template v-else-if="type === 'wrs'">
-        <div class="water-layer" :style="{ height: waterHeight + '%' }"></div>
-        <div class="iodine-layer" :style="{ height: iodineHeight + '%' }"></div>
         <div
-          class="contaminants-layer"
-          :style="{ height: contaminantsHeight + '%' }"
+          class="water-layer"
+          :style="{
+            height: waterHeight + '%',
+            backgroundColor: waterColor,
+          }"
         ></div>
       </template>
 
@@ -59,10 +60,10 @@
 
 <script>
 export default {
-  name: "Ars-Tank",
+  name: "eclss-Tank",
   props: {
     label: String,
-    type: { type: String, default: "ars" }, // 'ars', 'ogs', 'wrs'
+    type: { type: String, default: "ars" },
     co2: { type: Number, default: 0 },
     moisture: { type: Number, default: 0 },
     contaminants: { type: Number, default: 0 },
@@ -99,6 +100,16 @@ export default {
     },
     iodineHeight() {
       return this.toPercentage(this.iodine);
+    },
+    waterColor() {
+      // Contaminants-based interpolation: yellow (dirty) → blue (clean)
+      const c = Math.min(Math.max(this.contaminants / 100, 0), 1); // normalize to [0,1]
+      const start = [204, 153, 0]; // yellow
+      const end = [0, 170, 255]; // clean blue
+      const r = Math.round(start[0] * c + end[0] * (1 - c));
+      const g = Math.round(start[1] * c + end[1] * (1 - c));
+      const b = Math.round(start[2] * c + end[2] * (1 - c));
+      return `rgb(${r}, ${g}, ${b})`;
     },
   },
   methods: {
@@ -138,77 +149,52 @@ export default {
   background: #dcdcdc;
 }
 
-/* ARS layers */
-.co2-layer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background-color: #ffd700;
-  opacity: 0.85;
-  z-index: 3;
-  transition: height 0.5s ease-in-out;
-}
-
-.moisture-layer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background-color: #00bfff;
-  opacity: 0.6;
-  z-index: 2;
-  transition: height 0.5s ease-in-out;
-}
-
-.contaminants-layer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background-color: #32cd32;
-  opacity: 0.5;
-  z-index: 1;
-  transition: height 0.5s ease-in-out;
-}
-
-/* OGS layers */
-.oxygen-layer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background-color: #ff6347;
-  opacity: 0.75;
-  z-index: 2;
-  transition: height 0.5s ease-in-out;
-}
-
-.hydrogen-layer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background-color: #87cefa;
-  opacity: 0.75;
-  z-index: 1;
-  transition: height 0.5s ease-in-out;
-}
-
-/* WRS layers */
-.water-layer {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  background-color: #3399ff;
-  opacity: 0.8;
-  z-index: 3;
-  transition: height 0.5s ease-in-out;
-}
-
+.co2-layer,
+.moisture-layer,
+.contaminants-layer,
+.oxygen-layer,
+.hydrogen-layer,
+.water-layer,
 .iodine-layer {
   position: absolute;
   bottom: 0;
   width: 100%;
-  background-color: #ff69b4;
-  opacity: 0.6;
+  transition: height 0.5s ease-in-out, background-color 0.5s ease-in-out;
+  opacity: 0.75;
+}
+
+.co2-layer {
+  background-color: #ffd700;
+  z-index: 3;
+}
+.moisture-layer {
+  background-color: #00bfff;
   z-index: 2;
-  transition: height 0.5s ease-in-out;
+}
+.contaminants-layer {
+  background-color: #32cd32;
+  z-index: 1;
+}
+.oxygen-layer {
+  background-color: #ff6347;
+  z-index: 2;
+}
+.hydrogen-layer {
+  background-color: #87cefa;
+  z-index: 1;
+}
+.water-layer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  opacity: 0.85;
+  z-index: 3;
+  transition: height 0.5s ease-in-out, background-color 0.5s ease-in-out;
+}
+
+.iodine-layer {
+  background-color: #ff69b4;
+  z-index: 2;
 }
 
 .tank-readout {
