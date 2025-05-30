@@ -1,86 +1,70 @@
-#ifndef DEMO_NOVA_SANCTUM_ADSORBENT_BED_HPP_
-#define DEMO_NOVA_SANCTUM_ADSORBENT_BED_HPP_
+#ifndef DEMO_NOVA_SANCTUM_ADSORBENT_TANK_HPP_
+#define DEMO_NOVA_SANCTUM_ADSORBENT_TANK_HPP_
 
 #include <rclcpp/rclcpp.hpp>
-#include <mutex>
-#include "demo_nova_sanctum/msg/air_data.hpp"
+#include <std_msgs/msg/float64.hpp>
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
-#include "std_msgs/msg/float64.hpp"
 #include "demo_nova_sanctum/msg/cdra_status.hpp"
+#include "demo_nova_sanctum/msg/air_data.hpp"
+#include <mutex>
 
 /**
- * @class AdsorbentBed
- * @brief ROS 2 node to manage CO₂ adsorption, storage, and desorption.
- * 
- * - **Receives air from the Desiccant Bed** via `/adsorbent_server` service.
- * - **Adsorbs and stores CO₂** in a buffer before desorption.
- * - **Returns CO₂-free air to the Desiccant Bed** via `/processed_air_service`.
- * - **Heats up to 400°F to desorb and vent CO₂** after processing.
- * - **Publishes vented CO₂ to `/co2_vent`** topic.
+ * @brief Adsorbent Bed 1: Handles CO₂ adsorption from incoming air
  */
-class AdsorbentBed : public rclcpp::Node {
+class AdsorbentBed1 : public rclcpp::Node {
 public:
-  /**
-   * @brief Constructor initializes the Adsorbent Bed service.
-   */
-  AdsorbentBed();
+  AdsorbentBed1();
 
 private:
-  /**
-   * @brief Handles incoming air processing requests from the Desiccant Bed.
-   * - If already processing, it rejects new requests.
-   * - If available, it starts the CO₂ adsorption process.
-   */
-  void handle_air_processing_request(const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
-                                     std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
+  void handle_request(
+    const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
+  void process_adsorption();
+  void send_to_desiccant_bed_2();
 
-  /**
-   * @brief Adsorbs CO₂ while regulating temperature.
-   * - **Uses PID control** to maintain optimal adsorption temperature.
-   * - **Stores CO₂ in a buffer** instead of immediately venting.
-   */
-  void process_co2();
-
-  /**
-   * @brief Sends CO₂-free air back to the Desiccant Bed.
-   */
-  void send_processed_air();
-
-  /**
-   * @brief Begins CO₂ desorption cycle by heating up.
-   */
-  void start_desorption_cycle();
-
-  /**
-   * @brief Heats up to 400°F and vents CO₂.
-   */
-  void desorb_co2();
-
-  /*** CO₂ PROCESSING PARAMETERS ***/
-  double co2_removal_efficiency_; ///< Efficiency of CO₂ adsorption (default: 90%)
-  double co2_to_space_ratio_;     ///< Percentage of CO₂ sent to space (default: 50%)
-  double retained_co2_cumulative_; ///< Total CO₂ retained before desorption
-  double previous_error_; ///< Previous error for PID control
-  double co2_buffer_; ///< Buffer to store CO₂ before desorption
-
-  /*** AIR DATA VARIABLES ***/
-  double co2_;                ///< Current CO₂ mass
-  double moisture_content_;   ///< Current moisture content
-  double contaminants_;       ///< Current contaminant level
-  double temperature_;        ///< Current temperature
-
-  /*** ROS COMMUNICATION INTERFACES ***/
-  rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr adsorbent_service_; ///< Receives air from Desiccant Bed
-  rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_client_; ///< Sends processed air back
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr co2_publisher_; ///< Publishes vented CO₂ to `/co2_vent`
-  rclcpp::TimerBase::SharedPtr timer_; ///< Timer for periodic processing
+  rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr bed1_service_;
+  rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_client_;
+  rclcpp::Publisher<demo_nova_sanctum::msg::AirData>::SharedPtr air_quality_publisher_;
   rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_;
+  rclcpp::TimerBase::SharedPtr timer_;
   demo_nova_sanctum::msg::CdraStatus cdra;
-  /*** SYSTEM STATES ***/
-  bool is_active_; ///< Indicates if the adsorbent bed is currently processing air
+  rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desorption_client_;
 
-  /*** THREAD SAFETY ***/
-  std::mutex data_mutex_; ///< Ensures safe access to shared air data variables
+  std::mutex data_mutex_;
+  double co2_, moisture_, contaminants_, co2_buffer_;
+  double temperature_ = 300.0;
+  double previous_error_ = 0.0;
+  bool is_active_;
+  double tank_capacity_;
 };
 
-#endif // DEMO_NOVA_SANCTUM_ADSORBENT_BED_HPP_
+/**
+ * @brief Adsorbent Bed 2: Handles desorption and stores CO₂ into tank
+ */
+class AdsorbentBed2 : public rclcpp::Node {
+public:
+  AdsorbentBed2();
+
+private:
+  void handle_request(
+    const std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Request> request,
+    std::shared_ptr<demo_nova_sanctum::srv::CrewQuarters::Response> response);
+  void desorb_co2();
+
+  rclcpp::Service<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr bed2_service_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr co2_publisher_;
+  rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_;
+  rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant2_client_;
+
+  rclcpp::TimerBase::SharedPtr timer_;
+  demo_nova_sanctum::msg::CdraStatus cdra;
+
+  std::mutex data_mutex_;
+  double co2_buffer_;
+  double temperature_ = 300.0;
+  bool is_active_;
+  bool has_heated_;
+  
+};
+
+#endif  // DEMO_NOVA_SANCTUM_ADSORBENT_TANK_HPP_

@@ -6,9 +6,21 @@ MultiFiltrationProcessor::MultiFiltrationProcessor() : Node("wpa_multi_filtratio
         std::bind(&MultiFiltrationProcessor::handle_multi_filtration, this, std::placeholders::_1, std::placeholders::_2)
     );
 
+    waste_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::WaterCrew>("/wpa/catalytic_chamber", 10);
     catalytic_reactor_client_ = this->create_client<demo_nova_sanctum::srv::IonBed>("/wpa/catalytic_reactor");
 
     RCLCPP_INFO(this->get_logger(), "Multi-Filtration Processing Server Ready...");
+}
+
+void MultiFiltrationProcessor::publish_total_water(double water, double gas_bubbles, double contaminants, double iodine_level, double pressure, double temperature) {
+    demo_nova_sanctum::msg::WaterCrew msg;
+    msg.water = water;
+    msg.gas_bubbles = gas_bubbles;
+    msg.contaminants = contaminants;
+    msg.iodine_level = iodine_level;
+    msg.pressure = pressure;
+    msg.temperature = temperature;
+    waste_status_publisher_->publish(msg);
 }
 
 void MultiFiltrationProcessor::handle_multi_filtration(
@@ -30,21 +42,22 @@ void MultiFiltrationProcessor::handle_multi_filtration(
     RCLCPP_INFO(this->get_logger(), "Received %.2f liters of filtered water.", filtered_water);
     RCLCPP_INFO(this->get_logger(), "Initial Contaminants: %.2f%% | Organics: %.2f%% | Ammonia: %.2f%%", contaminants, organics, ammonia);
 
-    // **Step 1: Multifiltration Bed - Remove ammonia and organics**
     remove_ammonia_and_organics(filtered_water, contaminants, organics, ammonia);
 
     response->success = true;
     response->message = "Multi-Filtration complete! Sending to Catalytic Reactor.";
 
-    // **Send purified water to the Catalytic Reactor**
+    // Publish updated water state to dashboard
+    publish_total_water(filtered_water, 0.02, contaminants, 0.0, 101.3, 23.5);
+
+    // Send to catalytic reactor using updated contaminants
     send_to_catalytic_reactor(filtered_water, contaminants, organics);
 }
 
 void MultiFiltrationProcessor::remove_ammonia_and_organics(double &filtered_water, double &contaminants, double &organics, double &ammonia) {
-    // **Simulating removal process**
-    organics *= 0.50;  // First stage removes 50% of organics
-    ammonia *= 0.60;   // First stage removes 40% of ammonia
-    contaminants *= 0.70;  // 30% of contaminants removed
+    organics *= 0.50;
+    ammonia *= 0.60;
+    contaminants *= 0.70;
 
     RCLCPP_INFO(this->get_logger(), "Multifiltration Bed: Removed 50%% Organics, 40%% Ammonia.");
     RCLCPP_INFO(this->get_logger(), "Remaining Organics: %.2f%% | Remaining Ammonia: %.2f%%", organics, ammonia);
@@ -53,14 +66,13 @@ void MultiFiltrationProcessor::remove_ammonia_and_organics(double &filtered_wate
 void MultiFiltrationProcessor::send_to_catalytic_reactor(double filtered_water, double remaining_contaminants, double organics) {
     if (!catalytic_reactor_client_->wait_for_service(std::chrono::seconds(5))) {
         RCLCPP_FATAL(this->get_logger(), "Catalytic Reactor Service Unavailable! Retaining processed water.");
-        unprocessed_water_ = filtered_water; // Store water for later processing
+        unprocessed_water_ = filtered_water;
         return;
     }
 
     auto request = std::make_shared<demo_nova_sanctum::srv::IonBed::Request>();
     request->filtered_water = filtered_water;
     request->contaminants = remaining_contaminants;
-    
 
     RCLCPP_INFO(this->get_logger(), "Sending %.2f L filtered water with %.2f%% contaminants...",
                 filtered_water, remaining_contaminants);
@@ -74,7 +86,7 @@ void MultiFiltrationProcessor::handle_catalytic_reactor_response(rclcpp::Client<
         auto response = future.get();
         if (response->success) {
             RCLCPP_INFO(this->get_logger(), "Catalytic Reactor successfully processed water: %s", response->message.c_str());
-            unprocessed_water_ = 0.0; // Clear stored water
+            unprocessed_water_ = 0.0;
         } else {
             RCLCPP_WARN(this->get_logger(), "Catalytic Reactor failed: %s. Retaining processed water.", response->message.c_str());
         }

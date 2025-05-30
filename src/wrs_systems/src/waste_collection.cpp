@@ -1,4 +1,5 @@
 #include "demo_nova_sanctum/waste_tank.h"
+#include "std_msgs/msg/float64.hpp"
 
 WHCWasteTank::WHCWasteTank() 
     : Node("whc_waste_tank"),
@@ -6,74 +7,94 @@ WHCWasteTank::WHCWasteTank()
       pretreatment_volume_(0.05), 
       flush_volume_(1.0),
       total_water_volume_(0.0),
-      upa_available_(true) { // Initially assume UPA is available
+      upa_available_(true) {
 
-    // Declare parameters
     this->declare_parameter("tank_capacity", 22.0);
-    this->declare_parameter("processing_threshold", 10.0);  // Lower than full capacity for safety
+    this->declare_parameter("processing_threshold", 10.0);
 
     tank_capacity_ = this->get_parameter("tank_capacity").as_double();
     processing_threshold_ = this->get_parameter("processing_threshold").as_double();
 
-    // Service client for UPA
     upa_client_ = this->create_client<demo_nova_sanctum::srv::Upa>("/upa/process_urine");
 
-    // Retry mechanism for UPA
     retry_timer_ = this->create_wall_timer(
-        std::chrono::seconds(5), std::bind(&WHCWasteTank::retry_process_waste_transfer, this)
-    );
+        std::chrono::seconds(5),
+        std::bind(&WHCWasteTank::retry_process_waste_transfer, this));
+
+    urine_collection_timer_ = this->create_wall_timer(
+        std::chrono::seconds(3),
+        std::bind(&WHCWasteTank::simulate_urine_collection, this));
+    
+    dashboard_timer_ = this->create_wall_timer(
+        std::chrono::seconds(1),
+        std::bind(&WHCWasteTank::publish_status, this));
+
+        
+    waste_status_pub_ = this->create_publisher<demo_nova_sanctum::msg::WaterCrew>("/whc/collector_status", 10);
+
+    sabatier_water_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+        "/sabatier_output_water", 10,
+        std::bind(&WHCWasteTank::receive_sabatier_water, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "WHC Waste Tank Node Initialized");
-
-    // Simulate urine collection periodically
-    urine_collection_timer_ = this->create_wall_timer(
-        std::chrono::seconds(3), std::bind(&WHCWasteTank::simulate_urine_collection, this)
-    );
 }
 
+void WHCWasteTank::publish_status() {
+    auto msg = demo_nova_sanctum::msg::WaterCrew();
+    msg.water = total_water_volume_;
+    msg.gas_bubbles = 0.0;         
+    msg.contaminants = 0.8 * total_water_volume_;  
+    msg.iodine_level = 0.02;        
+    msg.pressure = 101.3;           
+    msg.temperature = 22.5;        
+    waste_status_pub_->publish(msg);
+}
 void WHCWasteTank::simulate_urine_collection() {
-    // **Stop urine collection if UPA is unavailable**
     if (!upa_available_) {
         RCLCPP_WARN(this->get_logger(), "[WHC] Urine collection paused! UPA is unavailable.");
         return;
     }
 
-    // Simulate urination completed and add pretreatment + flush
     double new_waste = urine_volume_ + pretreatment_volume_ + flush_volume_;
     total_water_volume_ += new_waste;
 
     RCLCPP_INFO(this->get_logger(), "[WHC] Urination cycle complete. New waste: %.2f liters. Total waste collected: %.2f liters",
                 new_waste, total_water_volume_);
 
-    // Check if it's time to transfer to UPA
+    if (total_water_volume_ >= processing_threshold_) {
+        process_waste_transfer();
+    }
+}
+
+void WHCWasteTank::receive_sabatier_water(const std_msgs::msg::Float64::SharedPtr msg) {
+    total_water_volume_ += msg->data;
+    RCLCPP_INFO(this->get_logger(), "[WHC] Received %.2f L from Sabatier reactor. New total: %.2f L",
+                msg->data, total_water_volume_);
+
     if (total_water_volume_ >= processing_threshold_) {
         process_waste_transfer();
     }
 }
 
 void WHCWasteTank::process_waste_transfer() {
-    // **Check if UPA is available**
     if (!upa_client_->wait_for_service(std::chrono::seconds(5))) {
         RCLCPP_FATAL(this->get_logger(), "UPA service unavailable! Cannot process waste. Retrying in 5 seconds...");
-        upa_available_ = false; // Mark UPA as unavailable
+        upa_available_ = false;
         return;
     }
 
-    // **UPA is available again → Resume collection**
     if (!upa_available_) {
         RCLCPP_INFO(this->get_logger(), "UPA service restored! Resuming urine collection...");
         upa_available_ = true;
     }
 
-    // Create service request
     auto request = std::make_shared<demo_nova_sanctum::srv::Upa::Request>();
     request->urine = total_water_volume_;
 
     RCLCPP_INFO(this->get_logger(), "Sending %.2f liters of waste to UPA...", total_water_volume_);
 
-    // Send request asynchronously
-    auto future_result = upa_client_->async_send_request(request,
-        std::bind(&WHCWasteTank::process_urine_response, this, std::placeholders::_1));
+    auto future_result = upa_client_->async_send_request(
+        request, std::bind(&WHCWasteTank::process_urine_response, this, std::placeholders::_1));
 }
 
 void WHCWasteTank::process_urine_response(rclcpp::Client<demo_nova_sanctum::srv::Upa>::SharedFuture future) {
@@ -81,7 +102,7 @@ void WHCWasteTank::process_urine_response(rclcpp::Client<demo_nova_sanctum::srv:
         auto response = future.get();
         if (response->success) {
             RCLCPP_INFO(this->get_logger(), "UPA processed urine successfully: %s", response->message.c_str());
-            total_water_volume_ = 0.0;  // Empty tank after processing
+            total_water_volume_ = 0.0;
         } else {
             RCLCPP_WARN(this->get_logger(), "UPA failed to process waste: %s. Retrying in 5 seconds...", response->message.c_str());
         }

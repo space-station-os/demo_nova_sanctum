@@ -6,9 +6,21 @@ CatalyticReactorProcessor::CatalyticReactorProcessor() : Node("wpa_catalytic_rea
         std::bind(&CatalyticReactorProcessor::handle_catalytic_reactor, this, std::placeholders::_1, std::placeholders::_2)
     );
 
+    waste_status_publisher_ = this->create_publisher<demo_nova_sanctum::msg::WaterCrew>("/wpa/ionization_status", 10);
     product_water_tank_client_ = this->create_client<demo_nova_sanctum::srv::Water>("/wpa/product_water_tank");
 
     RCLCPP_INFO(this->get_logger(), "Catalytic Reactor Processing Server Ready...");
+}
+
+void CatalyticReactorProcessor::publish_total_water(double filtered_water, double contaminants, double iodine_level, double gas_bubbles) {
+    demo_nova_sanctum::msg::WaterCrew msg;
+    msg.water = filtered_water;
+    msg.gas_bubbles = gas_bubbles;
+    msg.contaminants = contaminants;
+    msg.iodine_level = iodine_level;
+    msg.pressure = 101.3;
+    msg.temperature = 23.5;
+    waste_status_publisher_->publish(msg);
 }
 
 void CatalyticReactorProcessor::handle_catalytic_reactor(
@@ -29,23 +41,22 @@ void CatalyticReactorProcessor::handle_catalytic_reactor(
     RCLCPP_INFO(this->get_logger(), "Initial Contaminants: %.2f%%", contaminants);
 
     double iodine_level = 0.0;
-    double gas_bubbles = 0.05; // Initial gas bubble presence
+    double gas_bubbles = 0.05;
 
-    // **Step 1: Ion Exchange Bed - Remove contaminants & add iodine**
     process_ion_exchange(filtered_water, contaminants, iodine_level, gas_bubbles);
+
+    publish_total_water(filtered_water, contaminants, iodine_level, gas_bubbles);
 
     response->success = true;
     response->message = "Ion Exchange Complete! Sending to Product Water Tank.";
 
-    // **Send purified water to the Product Water Tank**
-    send_to_product_water_tank(filtered_water, gas_bubbles, contaminants, iodine_level, 1.0, 25.0);
+    send_to_product_water_tank(filtered_water, gas_bubbles, contaminants, iodine_level, 101.3, 25.0);
 }
 
 void CatalyticReactorProcessor::process_ion_exchange(double &filtered_water, double &contaminants, double &iodine_level, double &gas_bubbles) {
-    // **Simulating ion exchange purification process**
-    contaminants *= 0.2;  // Removes 80% of remaining contaminants
-    iodine_level = filtered_water * 0.05;  // Adds iodine based on volume (0.05 mg/L per liter)
-    gas_bubbles *= 0.5;  // Reduce gas content by 50%
+    contaminants *= 0.2;
+    iodine_level = filtered_water * 0.05;
+    gas_bubbles *= 0.5;
 
     RCLCPP_INFO(this->get_logger(), "Ion Exchange Bed: Removed 80%% Contaminants.");
     RCLCPP_INFO(this->get_logger(), "Final Contaminants: %.2f%% | Iodine Level: %.2f mg/L | Gas Bubbles: %.2f%%", 
@@ -55,7 +66,7 @@ void CatalyticReactorProcessor::process_ion_exchange(double &filtered_water, dou
 void CatalyticReactorProcessor::send_to_product_water_tank(double water, double gas_bubbles, double contaminants, double iodine_level, double pressure, double temperature) {
     if (!product_water_tank_client_->wait_for_service(std::chrono::seconds(5))) {
         RCLCPP_FATAL(this->get_logger(), "Product Water Tank Service Unavailable! Retaining processed water.");
-        unprocessed_water_ = water; // Store water for later processing
+        unprocessed_water_ = water;
         return;
     }
 
@@ -79,7 +90,7 @@ void CatalyticReactorProcessor::handle_product_water_tank_response(rclcpp::Clien
         auto response = future.get();
         if (response->success) {
             RCLCPP_INFO(this->get_logger(), "Product Water Tank successfully received purified water: %s", response->message.c_str());
-            unprocessed_water_ = 0.0; // Clear stored water
+            unprocessed_water_ = 0.0;
         } else {
             RCLCPP_WARN(this->get_logger(), "Product Water Tank rejected water: %s. Retaining processed water.", response->message.c_str());
         }

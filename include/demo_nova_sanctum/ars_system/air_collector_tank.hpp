@@ -6,6 +6,7 @@
 #include "sensor_msgs/msg/fluid_pressure.hpp"
 #include "demo_nova_sanctum/srv/crew_quarters.hpp"
 #include "demo_nova_sanctum/msg/cdra_status.hpp"
+#include "demo_nova_sanctum/msg/air_data.hpp"
 
 /**
  * @brief A simple PD Controller for temperature and pressure regulation.
@@ -84,6 +85,8 @@ private:
    */
   void update_c_activity();
 
+  void update_other_nodes_parameters(const std::string &mode);
+
   /*** SYSTEM PARAMETERS ***/
   double flow_rate_;          ///< Flow rate in SCFM
   double co2_intake_;         ///< CO₂ intake in mmHg
@@ -133,6 +136,9 @@ private:
   rclcpp::Client<demo_nova_sanctum::srv::CrewQuarters>::SharedPtr desiccant_bed_client_; ///< Calls Desiccant Bed service when needed
   rclcpp::TimerBase::SharedPtr timer_; ///< Timer for periodic updates
   rclcpp::Publisher<demo_nova_sanctum::msg::CdraStatus>::SharedPtr cdra_status_publisher_; ///< Publishes CDRA status
+  rclcpp::Publisher<demo_nova_sanctum::msg::AirData>::SharedPtr air_quality_publisher_;
+
 };
+
 
 #endif // DEMO_NOVA_SANCTUM_AIR_COLLECTOR_TANK_HPP_
